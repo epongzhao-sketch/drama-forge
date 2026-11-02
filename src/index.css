@@ -1,67 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.625rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* 深色作战室配色 —— 全站暗色 */
+    --background: 222 47% 4%;        /* #050810 深空蓝黑 */
+    --foreground: 45 15% 89%;        /* 暖白 */
+    --card: 225 45% 8%;              /* #0c1220 面板 */
+    --card-foreground: 45 15% 89%;
+    --popover: 225 45% 8%;
+    --popover-foreground: 45 15% 89%;
+    --primary: 37 93% 56%;           /* #F7A026 琥珀金 */
+    --primary-foreground: 222 47% 6%;
+    --secondary: 220 43% 12%;        /* #111a2b 面板2 */
+    --secondary-foreground: 45 15% 89%;
+    --muted: 220 43% 12%;
+    --muted-foreground: 220 13% 58%;
+    --accent: 37 93% 56%;
+    --accent-foreground: 222 47% 6%;
+    --destructive: 0 91% 71%;        /* #f87171 红标 */
+    --destructive-foreground: 222 47% 6%;
+    --border: 224 43% 16%;           /* 发丝边框 */
+    --input: 224 43% 16%;
+    --ring: 37 93% 56%;
+    --radius: 0.375rem;
+
+    /* 业务语义色 */
+    --mark: 0 91% 71%;               /* 红标素材段 */
+    --mint: 158 64% 52%;             /* 完成态 #34d399 */
+    --amber-dim: 37 60% 40%;
+
+    --sidebar-background: 225 45% 7%;
+    --sidebar-foreground: 45 15% 89%;
+    --sidebar-primary: 37 93% 56%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 220 43% 12%;
+    --sidebar-accent-foreground: 45 15% 89%;
+    --sidebar-border: 224 43% 16%;
+    --sidebar-ring: 37 93% 56%;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 222 47% 4%;
+    --foreground: 45 15% 89%;
+    --card: 225 45% 8%;
+    --card-foreground: 45 15% 89%;
+    --popover: 225 45% 8%;
+    --popover-foreground: 45 15% 89%;
+    --primary: 37 93% 56%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 220 43% 12%;
+    --secondary-foreground: 45 15% 89%;
+    --muted: 220 43% 12%;
+    --muted-foreground: 220 13% 58%;
+    --accent: 37 93% 56%;
+    --accent-foreground: 222 47% 6%;
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 222 47% 6%;
+    --border: 224 43% 16%;
+    --input: 224 43% 16%;
+    --ring: 37 93% 56%;
   }
 }
 
@@ -69,7 +70,108 @@
   * {
     @apply border-border;
   }
+  html {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    background-image:
+      radial-gradient(1200px 600px at 85% -10%, hsl(224 60% 10% / 0.55), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, hsl(37 80% 12% / 0.25), transparent 55%);
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+  ::selection {
+    background: hsl(37 93% 56% / 0.35);
+  }
+  /* 细滚动条，琥珀滑块 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(225 45% 6%);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(37 60% 40%);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(37 93% 56%);
+  }
+}
+
+@layer components {
+  /* 等宽小标签：大写 + 宽字距 */
+  .mono-label {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  .font-mono2 {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+  /* 剧本正文：宋体系 */
+  .font-script {
+    font-family: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
+  }
+  /* 面板 */
+  .panel {
+    background: hsl(var(--card) / 0.72);
+    border: 1px solid hsl(var(--border));
+    backdrop-filter: blur(8px);
+  }
+  /* 状态灯 */
+  .led {
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: hsl(var(--muted-foreground) / 0.45);
+    flex: none;
+  }
+  .led-amber {
+    background: hsl(var(--primary));
+    box-shadow: 0 0 8px hsl(var(--primary) / 0.8);
+  }
+  .led-mint {
+    background: hsl(var(--mint));
+    box-shadow: 0 0 8px hsl(var(--mint) / 0.8);
+  }
+  .led-red {
+    background: hsl(var(--mark));
+    box-shadow: 0 0 8px hsl(var(--mark) / 0.8);
+  }
+  .led-pulse {
+    animation: led-pulse 1.5s ease-in-out infinite;
+  }
+  /* 红标文本 */
+  .redmark {
+    background: hsl(var(--mark) / 0.18);
+    color: hsl(0 91% 78%);
+    box-shadow: inset 0 -1px 0 hsl(var(--mark) / 0.55);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+}
+
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-pulse {
+    animation: none;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -5,7 +5,11 @@ import {
   varchar,
   text,
   timestamp,
-  // bigint,
+  bigint,
+  int,
+  json,
+  longtext,
+  uniqueIndex,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -26,15 +30,107 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here. See docs/Database.md for schema examples and patterns.
-//
-// Example:
-// export const posts = mysqlTable("posts", {
-//   id: serial("id").primaryKey(),
-//   title: varchar("title", { length: 255 }).notNull(),
-//   content: text("content"),
-//   createdAt: timestamp("created_at").notNull().defaultNow(),
-// });
-//
-// Note: FK columns referencing a serial() PK must use:
-//   bigint("columnName", { mode: "number", unsigned: true }).notNull()
+// ---------- 爆剧复刻舱：流水线数据表 ----------
+
+export const projects = mysqlTable("projects", {
+  id: serial("id").primaryKey(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  sourceTitle: varchar("sourceTitle", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+/** 爆款样本（1:1 项目）：原文 + 红标素材段 */
+export const samples = mysqlTable("samples", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true })
+    .notNull()
+    .unique(),
+  content: longtext("content").notNull(),
+  redSegments: json("redSegments").notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+/** AI 拆解结果（1:1 项目） */
+export const analyses = mysqlTable("analyses", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true })
+    .notNull()
+    .unique(),
+  result: json("result").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** 换皮设定（1:1 项目） */
+export const remaps = mysqlTable("remaps", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true })
+    .notNull()
+    .unique(),
+  settings: json("settings").notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+/** 总纲（1:1 项目） */
+export const bibles = mysqlTable("bibles", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true })
+    .notNull()
+    .unique(),
+  content: json("content").notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+/** 分集大纲（每集一行） */
+export const outlines = mysqlTable(
+  "outlines",
+  {
+    id: serial("id").primaryKey(),
+    projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+    epNo: int("epNo").notNull(),
+    data: json("data").notNull(),
+    updatedAt: timestamp("updatedAt")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("outlines_project_ep").on(t.projectId, t.epNo)],
+);
+
+/** 单集剧本（中英双语分字段存） */
+export const scripts = mysqlTable(
+  "scripts",
+  {
+    id: serial("id").primaryKey(),
+    projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+    epNo: int("epNo").notNull(),
+    contentZh: json("contentZh"),
+    contentEn: json("contentEn"),
+    updatedAt: timestamp("updatedAt")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("scripts_project_ep").on(t.projectId, t.epNo)],
+);
+
+export type Project = typeof projects.$inferSelect;
+export type Sample = typeof samples.$inferSelect;
+export type Analysis = typeof analyses.$inferSelect;
+export type Remap = typeof remaps.$inferSelect;
+export type Bible = typeof bibles.$inferSelect;
+export type Outline = typeof outlines.$inferSelect;
+export type Script = typeof scripts.$inferSelect;

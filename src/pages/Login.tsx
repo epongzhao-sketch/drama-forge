@@ -1,5 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Clapperboard } from "lucide-react";
+import { PIPELINE_STAGES } from "@contracts/pipeline";
 
 function getOAuthUrl() {
   const kimiAuthUrl = import.meta.env.VITE_KIMI_AUTH_URL;
@@ -19,23 +20,36 @@ function getOAuthUrl() {
 
 export default function Login() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle>Welcome</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <div className="flex min-h-dvh items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        <div className="border border-border bg-card/70 px-6 py-10 text-center backdrop-blur md:px-10">
+          <span className="relative mx-auto flex h-12 w-12 items-center justify-center border border-border bg-secondary">
+            <Clapperboard className="h-5 w-5 text-primary" />
+            <span className="absolute -top-px -right-px h-1.5 w-1.5 bg-primary" />
+          </span>
+          <h1 className="mt-5 text-2xl font-bold tracking-tight">爆剧复刻舱</h1>
+          <p className="mono-label mt-1.5">Drama Forge · 爆款复刻流水线</p>
+          <p className="mx-auto mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
+            录入爆款样本，标红高能素材段 —— AI 拆解、换皮复刻，流水线产出中英双语短剧剧本。
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+            {PIPELINE_STAGES.map((s, i) => (
+              <span key={s.key} className="mono-label text-[9px]">
+                <span className="text-primary">{String(i + 1).padStart(2, "0")}</span> {s.label}
+              </span>
+            ))}
+          </div>
           <Button
-            className="w-full"
-            size="lg"
+            className="mt-8 h-12 w-full text-base font-medium"
             onClick={() => {
               window.location.href = getOAuthUrl();
             }}
           >
-            Sign in with Kimi
+            使用 Kimi 账号登录
           </Button>
-        </CardContent>
-      </Card>
+          <p className="mono-label mt-4 text-[9px]">登录后即可保存你的复刻项目库</p>
+        </div>
+      </div>
     </div>
   );
 }
