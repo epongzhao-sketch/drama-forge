@@ -10,6 +10,7 @@ import { Paths } from "@contracts/constants";
 import { log } from "./lib/logger";
 import { handleClientLog } from "./lib/clientlog";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
+import { uploadRoutes } from "./routes/upload";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -77,6 +78,8 @@ app.post(
   bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.body(null, 413) }),
   handleClientLog,
 );
+// 剧本 PDF 上传（multipart，30MB 上限；docx/txt 在浏览器端解析不走这里）
+app.route("/api/upload", uploadRoutes);
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 
 // Unhandled request errors must reach /tmp/kimi-logs/app.log, not just stdout:

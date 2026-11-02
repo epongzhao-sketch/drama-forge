@@ -9,6 +9,15 @@ export interface RedSegment {
   note?: string;
 }
 
+/** 上传的原始剧本文件（仅存 docx；PDF 不入库） */
+export interface StoredSourceFile {
+  name: string;
+  mime: string;
+  size: number;
+  /** base64，仅 .docx 会存，用于「下载原稿」 */
+  dataB64?: string;
+}
+
 /** AI 拆解结果（V38.5：核心期待 × 元素 强制分离） */
 export interface AnalysisResult {
   dramaType: string;

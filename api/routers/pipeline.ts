@@ -32,6 +32,7 @@ import type {
   EpisodeScript,
   TransplantMapping,
   EvalReport,
+  StoredSourceFile,
 } from "@contracts/pipeline";
 
 // ---------- zod schemas（与 contracts/pipeline.ts 对齐） ----------
@@ -287,7 +288,11 @@ export const pipelineRouter = createRouter({
       return {
         project: p,
         sample: sample
-          ? { content: sample.content, redSegments: sample.redSegments as RedSegment[] }
+          ? {
+              content: sample.content,
+              redSegments: sample.redSegments as RedSegment[],
+              sourceFile: sample.sourceFile as StoredSourceFile | null,
+            }
           : null,
         analysis: analysis ? (analysis.result as AnalysisResult) : null,
         remap: remap ? (remap.settings as RemapSettings) : null,
@@ -308,29 +313,41 @@ export const pipelineRouter = createRouter({
       };
     }),
 
-  /** 保存样本（原文 + 红标段） */
+  /** 保存样本（原文 + 红标段，可选原始 docx 文件） */
   saveSample: authedQuery
     .input(
       z.object({
         projectId: z.number(),
         content: z.string().min(10).max(200000),
         redSegments: z.array(redSegmentSchema).max(200),
+        sourceFile: z
+          .object({
+            name: z.string().max(255),
+            mime: z.string().max(100),
+            size: z.number().int().max(12 * 1024 * 1024),
+            dataB64: z.string().max(16 * 1024 * 1024).optional(),
+          })
+          .nullable()
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       await ensureProject(ctx.user.id, input.projectId);
       const db = getDb();
       const [existing] = await db.select().from(samples).where(eq(samples.projectId, input.projectId));
+      // 未显式传入 sourceFile（普通粘贴保存）→ 保留已有文件；显式 null → 清除
+      const sourceFile = input.sourceFile === undefined ? (existing?.sourceFile ?? null) : input.sourceFile;
       if (existing) {
         await db
           .update(samples)
-          .set({ content: input.content, redSegments: input.redSegments })
+          .set({ content: input.content, redSegments: input.redSegments, sourceFile })
           .where(eq(samples.projectId, input.projectId));
       } else {
         await db.insert(samples).values({
           projectId: input.projectId,
           content: input.content,
           redSegments: input.redSegments,
+          sourceFile,
         });
       }
       return { ok: true };

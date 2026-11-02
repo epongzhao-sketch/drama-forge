@@ -170,7 +170,7 @@ export async function parseDocx(buf: ArrayBuffer): Promise<ParsedScript> {
   return { text, segments: valid };
 }
 
-/** 按文件类型解析上传的剧本文件 */
+/** 按文件类型解析上传的剧本文件（PDF 走服务端 /api/upload/script） */
 export async function parseScriptFile(file: File): Promise<ParsedScript & { hasRed: boolean }> {
   const name = file.name.toLowerCase();
   if (name.endsWith(".docx")) {
@@ -180,10 +180,32 @@ export async function parseScriptFile(file: File): Promise<ParsedScript & { hasR
   if (name.endsWith(".doc")) {
     throw new Error("暂不支持旧版 .doc 格式 —— 请在 Word / WPS 里另存为 .docx 后再上传");
   }
+  if (name.endsWith(".pdf")) {
+    if (file.size > 30 * 1024 * 1024) {
+      throw new Error("PDF 超过 30MB 上限 —— 建议拆分成单集文件再上传");
+    }
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/upload/script", { method: "POST", body: form });
+    let data: { text?: string; via?: string; error?: string } | null = null;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`服务器没有返回有效结果（HTTP ${res.status}），请重试`);
+    }
+    if (!res.ok || !data?.text) {
+      throw new Error(data?.error ?? `PDF 解析失败（HTTP ${res.status}）`);
+    }
+    return {
+      text: data.text,
+      segments: [],
+      hasRed: false,
+    };
+  }
   if (name.endsWith(".txt") || name.endsWith(".md")) {
     const text = (await file.text()).replace(/\r\n?/g, "\n").trim();
     if (!text) throw new Error("文件里没有文字内容");
     return { text, segments: [], hasRed: false };
   }
-  throw new Error("仅支持 .docx / .txt / .md 文件");
+  throw new Error("支持 .docx / .pdf / .txt / .md 文件");
 }

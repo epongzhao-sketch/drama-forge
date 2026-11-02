@@ -52,6 +52,8 @@ export const samples = mysqlTable("samples", {
     .unique(),
   content: longtext("content").notNull(),
   redSegments: json("redSegments").notNull(),
+  /** 上传的原始 .docx 文件（base64），供下载原稿；PDF 不入库 */
+  sourceFile: json("sourceFile"),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
     .notNull()
