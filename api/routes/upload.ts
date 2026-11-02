@@ -1,10 +1,16 @@
 // 剧本文件上传 —— PDF 在此解析（multipart 大文件走 REST 而非 tRPC）
 // docx/txt/md 仍在浏览器端解析（src/lib/parseScriptFile.ts），不经由此路由
+//
+// 响应是 NDJSON 流：先不断下发 {"stage","detail"} 心跳，最后一条带 done:true（或 error）。
+// 扫描件视觉识别可能跑 1-2 分钟——没有心跳的话，反向代理会在 ~60s 无字节时掐断连接，
+// 浏览器端就只剩一句 "Failed to fetch"。
 import { Hono } from "hono";
+import { stream } from "hono/streaming";
 import { authenticateRequest } from "../kimi/auth";
 import { extractPdfScript } from "../ai/pdf";
 
 const MAX_PDF_BYTES = 30 * 1024 * 1024;
+const HEARTBEAT_MS = 4000;
 
 export const uploadRoutes = new Hono();
 
@@ -34,17 +40,41 @@ uploadRoutes.post("/script", async (c) => {
   if (buf.length > MAX_PDF_BYTES) {
     return c.json({ error: "PDF 超过 30MB 上限 —— 建议拆分成单集文件再上传" }, 413);
   }
-  try {
-    const result = await extractPdfScript(buf);
-    return c.json({
-      text: result.text,
-      via: result.via,
-      layoutMatters: result.layoutMatters,
-    });
-  } catch (err) {
-    return c.json(
-      { error: err instanceof Error ? err.message : "PDF 解析失败" },
-      422,
-    );
-  }
+
+  c.header("Content-Type", "application/x-ndjson; charset=utf-8");
+  c.header("Cache-Control", "no-cache");
+  c.header("X-Accel-Buffering", "no"); // 关掉 nginx 类代理的响应缓冲，心跳直达浏览器
+
+  return stream(c, async (s) => {
+    let closed = false;
+    const send = async (obj: Record<string, unknown>) => {
+      if (closed) return;
+      try {
+        await s.write(JSON.stringify(obj) + "\n");
+      } catch {
+        closed = true; // 客户端已断开，后续写入静默丢弃
+      }
+    };
+    // 兜底心跳：即使回调间隔长，也保证每 4s 至少一个字节
+    let lastDetail = "正在准备…";
+    const timer = setInterval(() => {
+      void send({ stage: "working", detail: lastDetail });
+    }, HEARTBEAT_MS);
+    try {
+      const result = await extractPdfScript(buf, (stage, detail) => {
+        lastDetail = detail;
+        void send({ stage, detail });
+      });
+      await send({
+        done: true,
+        text: result.text,
+        via: result.via,
+        layoutMatters: result.layoutMatters,
+      });
+    } catch (err) {
+      await send({ done: true, error: err instanceof Error ? err.message : "PDF 解析失败" });
+    } finally {
+      clearInterval(timer);
+    }
+  });
 });

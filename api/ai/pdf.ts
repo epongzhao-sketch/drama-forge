@@ -1,7 +1,15 @@
 // PDF 剧本解析 —— 纯文字 PDF 走文本层提取；扫描件/含图 PDF 逐页渲染成图，走 Claude 视觉转写
 // 网关凭证仅服务端使用，模型 id 运行时从网关读取（kimi-* → claude-*），不硬编码
-// 注意：pdf-parse 是纯 ESM 包，只能动态 import（静态 import 会被 esbuild CJS interop 打成 require 而崩）
+// 注意：pdf-parse 是纯 ESM 包，只能动态 import（静态 import 会被 esbuild CJS interop 打成 require 而崩）；
+// 且不能让 esbuild 把它打进 bundle —— 打包后 pdfjs 会解析到浏览器构建，Node 下缺 DOMMatrix 直接崩。
+// 所以用运行时构造的 import 隐藏模块说明符，让产物在运行时从 node_modules 按 node 条件解析真实包。
 import Anthropic from "@anthropic-ai/sdk";
+
+type PdfParseModule = typeof import("pdf-parse");
+// eslint-disable-next-line @typescript-eslint/no-implied-eval
+const runtimeImport = new Function("specifier", "return import(specifier)") as (
+  specifier: string,
+) => Promise<PdfParseModule>;
 
 export interface PdfExtraction {
   text: string;
@@ -12,6 +20,9 @@ export interface PdfExtraction {
   /** 视觉转写消耗的 token（计费用） */
   usage?: { input: number; output: number };
 }
+
+/** 分阶段进度回调（用于上传接口的流式心跳，防止长任务被代理超时掐断） */
+export type PdfProgressFn = (stage: "parsing" | "vision", detail: string) => void;
 
 const MIN_TEXT_CHARS = 120; // 文本层少于此字符数 → 判定为扫描件（一集短剧剧本都可能只有百来字）
 const VISION_MAX_BYTES = 30 * 1024 * 1024;
@@ -37,7 +48,7 @@ interface PdfDoc {
 
 /** 文本层 + 页面截图（一次解析，两个结果都拿到） */
 async function parsePdf(buf: Buffer): Promise<PdfDoc> {
-  const { PDFParse } = await import("pdf-parse");
+  const { PDFParse } = await runtimeImport("pdf-parse");
   const parser = new PDFParse({ data: new Uint8Array(buf) });
   try {
     const textRes = await parser.getText();
@@ -88,6 +99,7 @@ async function resolveModelId(): Promise<string> {
 
 async function visionTranscribePages(
   pageImages: string[],
+  onProgress?: PdfProgressFn,
 ): Promise<{ text: string; usage: { input: number; output: number } }> {
   const anthropic = getAnthropic();
   const model = await resolveModelId();
@@ -97,6 +109,7 @@ async function visionTranscribePages(
   // 每 4 页一批，控制单请求体积与输出长度
   for (let i = 0; i < pageImages.length; i += 4) {
     const batch = pageImages.slice(i, i + 4);
+    onProgress?.("vision", `正在识别第 ${i + 1}-${Math.min(i + 4, pageImages.length)} 页 / 共 ${pageImages.length} 页…`);
     const res = await anthropic.messages.create({
       model,
       max_tokens: 8000,
@@ -136,10 +149,11 @@ async function visionTranscribePages(
  * 1. 先抽文本层——够长就直接用（快、免费）
  * 2. 文本层几乎没有（扫描件/图片型）→ 逐页渲染成图，Claude 视觉转写（计费，走平台网关）
  */
-export async function extractPdfScript(buf: Buffer): Promise<PdfExtraction> {
+export async function extractPdfScript(buf: Buffer, onProgress?: PdfProgressFn): Promise<PdfExtraction> {
   if (buf.length > VISION_MAX_BYTES) {
     throw new Error("这份 PDF 超过 30MB，超出识别上限 —— 建议拆分成单集文件再上传");
   }
+  onProgress?.("parsing", "正在解析 PDF 文本层…");
   let doc: PdfDoc;
   try {
     doc = await parsePdf(buf);
@@ -157,7 +171,7 @@ export async function extractPdfScript(buf: Buffer): Promise<PdfExtraction> {
     throw new Error(`这份扫描 PDF 共 ${doc.pageImages.length} 页，超过 ${VISION_MAX_PAGES} 页上限 —— 建议拆分成单集文件再上传`);
   }
   const t0 = Date.now();
-  const { text, usage } = await visionTranscribePages(doc.pageImages);
+  const { text, usage } = await visionTranscribePages(doc.pageImages, onProgress);
   console.log(
     `[pdf-vision] ${doc.pageImages.length} pages, ${text.length} chars in ${((Date.now() - t0) / 1000).toFixed(1)}s, tokens in=${usage.input} out=${usage.output}`,
   );

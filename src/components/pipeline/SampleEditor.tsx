@@ -35,6 +35,7 @@ export function SampleEditor({
   const [editedAfterMark, setEditedAfterMark] = useState(false);
   const [pasteMsg, setPasteMsg] = useState<string | null>(null);
   const [importing, setImporting] = useState<string | null>(null); // 正在解析的文件名
+  const [importDetail, setImportDetail] = useState<string | null>(null); // 服务端回传的识别进度
   const [dragging, setDragging] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -79,9 +80,10 @@ export function SampleEditor({
       return;
     }
     setImporting(file.name);
+    setImportDetail(null);
     setPasteMsg(null);
     try {
-      const parsed = await parseScriptFile(file);
+      const parsed = await parseScriptFile(file, setImportDetail);
       setContent(parsed.text);
       setSegments(parsed.segments);
       setEditedAfterMark(false);
@@ -110,6 +112,7 @@ export function SampleEditor({
       alert(err instanceof Error ? err.message : "文件解析失败");
     } finally {
       setImporting(null);
+      setImportDetail(null);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
@@ -223,7 +226,7 @@ export function SampleEditor({
 
       {importing?.toLowerCase().endsWith(".pdf") && (
         <p className="border border-primary/40 bg-primary/10 px-3 py-2 text-xs text-primary">
-          正在解析 PDF「{importing}」——纯文字 PDF 几秒完成；扫描件需要视觉识别，可能要 1-2 分钟，请耐心等候。
+          正在解析 PDF「{importing}」——{importDetail ?? "纯文字 PDF 几秒完成；扫描件需要视觉识别，可能要 1-2 分钟，请耐心等候。"}
         </p>
       )}
       {pasteMsg && (

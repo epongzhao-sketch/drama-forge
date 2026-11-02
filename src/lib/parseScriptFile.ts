@@ -170,8 +170,11 @@ export async function parseDocx(buf: ArrayBuffer): Promise<ParsedScript> {
   return { text, segments: valid };
 }
 
-/** 按文件类型解析上传的剧本文件（PDF 走服务端 /api/upload/script） */
-export async function parseScriptFile(file: File): Promise<ParsedScript & { hasRed: boolean }> {
+/** 按文件类型解析上传的剧本文件（PDF 走服务端 /api/upload/script；onProgress 接收识别进度文案） */
+export async function parseScriptFile(
+  file: File,
+  onProgress?: (detail: string) => void,
+): Promise<ParsedScript & { hasRed: boolean }> {
   const name = file.name.toLowerCase();
   if (name.endsWith(".docx")) {
     const parsed = await parseDocx(await file.arrayBuffer());
@@ -186,21 +189,52 @@ export async function parseScriptFile(file: File): Promise<ParsedScript & { hasR
     }
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch("/api/upload/script", { method: "POST", body: form });
-    let data: { text?: string; via?: string; error?: string } | null = null;
+    // 响应是 NDJSON 心跳流：逐行读，最后一条 done 才是结果；流中断才报网络错误
+    let res: Response;
     try {
-      data = await res.json();
+      res = await fetch("/api/upload/script", { method: "POST", body: form });
     } catch {
-      throw new Error(`服务器没有返回有效结果（HTTP ${res.status}），请重试`);
+      throw new Error("网络连接中断 —— 请检查网络后重试（大文件上传建议稳定网络）");
     }
-    if (!res.ok || !data?.text) {
-      throw new Error(data?.error ?? `PDF 解析失败（HTTP ${res.status}）`);
+    if (!res.ok || !res.body) {
+      let msg = `PDF 解析失败（HTTP ${res.status}）`;
+      try {
+        const d = (await res.json()) as { error?: string };
+        if (d.error) msg = d.error;
+      } catch {
+        /* 非 JSON 错误页，用默认文案 */
+      }
+      throw new Error(msg);
     }
-    return {
-      text: data.text,
-      segments: [],
-      hasRed: false,
-    };
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let final: { text?: string; via?: string; error?: string } | null = null;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 1);
+          if (!line) continue;
+          try {
+            const obj = JSON.parse(line) as { done?: boolean; text?: string; via?: string; error?: string; detail?: string };
+            if (obj.detail) onProgress?.(obj.detail);
+            if (obj.done) final = obj;
+          } catch {
+            /* 半行/心跳噪音，忽略 */
+          }
+        }
+      }
+    } catch {
+      throw new Error("识别过程中连接中断 —— 请重试（扫描件识别较久，建议网络稳定时操作）");
+    }
+    if (!final) throw new Error("服务器没有返回结果，请重试");
+    if (final.error || !final.text) throw new Error(final.error ?? "PDF 解析失败");
+    return { text: final.text, segments: [], hasRed: false };
   }
   if (name.endsWith(".txt") || name.endsWith(".md")) {
     const text = (await file.text()).replace(/\r\n?/g, "\n").trim();
