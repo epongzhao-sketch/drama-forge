@@ -1,66 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import type { RedSegment } from "@contracts/pipeline";
+import { parsePastedHtml, parseScriptFile } from "@/lib/parseScriptFile";
 import { Button } from "@/components/ui/button";
 import { ErrorBox } from "@/components/chrome";
-import { Highlighter, Save, Trash2, Eye, PencilLine, Info } from "lucide-react";
+import { Highlighter, Save, Trash2, Eye, PencilLine, Info, FileUp, Loader2 } from "lucide-react";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
-}
-
-/** 判断 CSS color 是否为红色系 */
-function isReddish(color: string): boolean {
-  const c = color.replace(/\s+/g, "").toLowerCase();
-  if (["red", "#f00", "#ff0000", "crimson", "#dc143c"].includes(c)) return true;
-  const rgb = c.match(/rgba?\((\d+),(\d+),(\d+)/);
-  if (rgb) {
-    const [, r, g, b] = rgb.map(Number);
-    return r > 140 && g < 110 && b < 110 && r > g * 1.5;
-  }
-  const hex = c.match(/^#([0-9a-f]{6})$/);
-  if (hex) {
-    const v = parseInt(hex[1], 16);
-    const r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
-    return r > 140 && g < 110 && b < 110 && r > g * 1.5;
-  }
-  return false;
-}
-
-/** 解析粘贴的 HTML，提取红色文字区间为红标段 */
-function parsePastedHtml(html: string): { text: string; segments: RedSegment[] } | null {
-  if (!/color\s*:|style=/i.test(html)) return null;
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  let text = "";
-  const segments: RedSegment[] = [];
-
-  const walk = (node: Node, red: boolean) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const t = node.textContent ?? "";
-      if (red && t.trim()) {
-        segments.push({ id: uid(), start: text.length, end: text.length + t.length });
-      }
-      text += t;
-      return;
-    }
-    if (!(node instanceof HTMLElement)) return;
-    const tag = node.tagName.toLowerCase();
-    if (tag === "br") {
-      text += "\n";
-      return;
-    }
-    const color = node.style?.color ?? "";
-    const isRed = red || (color ? isReddish(color) : false);
-    const blockBefore = ["p", "div", "li", "tr", "h1", "h2", "h3"].includes(tag) && text && !text.endsWith("\n");
-    if (blockBefore) text += "\n";
-    node.childNodes.forEach((ch) => walk(ch, isRed));
-    if (["p", "div", "li", "tr", "h1", "h2", "h3"].includes(tag)) text += "\n";
-  };
-  doc.body.childNodes.forEach((n) => walk(n, false));
-  text = text.replace(/\n{3,}/g, "\n\n").trim();
-  const valid = segments.filter((s) => s.end > s.start && s.end <= text.length);
-  if (!text || valid.length === 0) return null;
-  return { text, segments: valid };
 }
 
 export function SampleEditor({
@@ -77,7 +24,10 @@ export function SampleEditor({
   const [mode, setMode] = useState<"edit" | "preview">(initial ? "preview" : "edit");
   const [editedAfterMark, setEditedAfterMark] = useState(false);
   const [pasteMsg, setPasteMsg] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const saveMut = trpc.pipeline.saveSample.useMutation({
     onSuccess: () => {
@@ -113,6 +63,39 @@ export function SampleEditor({
     setPasteMsg(`已自动识别 ${parsed.segments.length} 段红色标注素材`);
   };
 
+  const importFile = async (file: File) => {
+    if (content.trim() && !window.confirm(`导入「${file.name}」将替换当前样本内容和全部红标段，继续吗？`)) {
+      return;
+    }
+    setImporting(true);
+    setPasteMsg(null);
+    try {
+      const parsed = await parseScriptFile(file);
+      setContent(parsed.text);
+      setSegments(parsed.segments);
+      setEditedAfterMark(false);
+      setMode("edit");
+      setPasteMsg(
+        parsed.hasRed
+          ? `已从「${file.name}」导入 ${parsed.text.length.toLocaleString()} 字，自动识别 ${parsed.segments.length} 段红色标注素材`
+          : `已从「${file.name}」导入 ${parsed.text.length.toLocaleString()} 字（纯文本文件不含颜色信息，请手动标红）`,
+      );
+    } catch (err) {
+      setPasteMsg(null);
+      alert(err instanceof Error ? err.message : "文件解析失败");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void importFile(file);
+  };
+
   const handleContentChange = (v: string) => {
     setContent(v);
     if (segments.length) setEditedAfterMark(true);
@@ -140,8 +123,8 @@ export function SampleEditor({
       <div className="flex flex-wrap items-center gap-2 border border-border bg-secondary/50 px-3 py-2.5">
         <Info className="h-4 w-4 shrink-0 text-primary" />
         <p className="text-xs text-muted-foreground leading-relaxed">
-          粘贴爆款原剧本（从 Word / 文档粘贴时，<span className="text-destructive">红色字体</span>会被自动识别为红标段）；
-          或用鼠标选中文字后点击「标为爆款素材段」。<span className="text-foreground/80">建议先贴完原文再标红，标红后避免改动原文。</span>
+          直接上传标好红的 <span className="text-foreground/80">.docx</span> 剧本文件（<span className="text-destructive">红色字体/红色高亮</span>自动识别为红标段），
+          或粘贴文本后手动标红。<span className="text-foreground/80">建议先导入原文再标红，标红后避免改动原文。</span>
         </p>
       </div>
 
@@ -164,6 +147,26 @@ export function SampleEditor({
             <Eye className="h-3.5 w-3.5" /> 红标预览
           </button>
         </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".docx,.txt,.md"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importFile(f);
+          }}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileRef.current?.click()}
+          disabled={importing}
+          className="h-11 gap-1.5"
+        >
+          {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileUp className="h-3.5 w-3.5" />}
+          {importing ? "解析中…" : "上传剧本文件"}
+        </Button>
         {mode === "edit" && (
           <Button variant="outline" size="sm" onClick={markSelection} className="h-11 gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive">
             <Highlighter className="h-3.5 w-3.5" />
@@ -195,30 +198,47 @@ export function SampleEditor({
       )}
       {saveMut.error && <ErrorBox message={saveMut.error.message} />}
 
-      {mode === "edit" ? (
-        <textarea
-          ref={taRef}
-          value={content}
-          onChange={(e) => handleContentChange(e.target.value)}
-          onPaste={handlePaste}
-          placeholder="在这里粘贴爆款短剧的原剧本或剧情文本…&#10;&#10;第1集&#10;场景：豪宅客厅 — 夜&#10;林晚：（摔碎酒杯）你骗了我三年！&#10;……"
-          className="font-script min-h-[420px] w-full resize-y border border-border bg-card/70 p-4 text-[15px] leading-7 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      ) : (
-        <div className="font-script min-h-[420px] whitespace-pre-wrap border border-border bg-card/70 p-4 text-[15px] leading-7">
-          {previewParts?.length ? (
-            previewParts.map((p) =>
-              p.red ? (
-                <mark key={p.key} className="redmark">{p.text}</mark>
-              ) : (
-                <span key={p.key}>{p.text}</span>
-              ),
-            )
-          ) : (
-            <span className="text-muted-foreground/60">暂无内容</span>
-          )}
-        </div>
-      )}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        className={`relative ${dragging ? "outline-dashed outline-2 -outline-offset-2 outline-primary" : ""}`}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+            <p className="flex items-center gap-2 border border-primary bg-card px-4 py-3 text-sm text-primary">
+              <FileUp className="h-4 w-4" /> 松开导入 .docx / .txt / .md 剧本文件
+            </p>
+          </div>
+        )}
+        {mode === "edit" ? (
+          <textarea
+            ref={taRef}
+            value={content}
+            onChange={(e) => handleContentChange(e.target.value)}
+            onPaste={handlePaste}
+            placeholder="在这里粘贴爆款短剧的原剧本或剧情文本，或点击上方「上传剧本文件」/ 把文件拖进来…&#10;&#10;第1集&#10;场景：豪宅客厅 — 夜&#10;林晚：（摔碎酒杯）你骗了我三年！&#10;……"
+            className="font-script min-h-[420px] w-full resize-y border border-border bg-card/70 p-4 text-[15px] leading-7 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        ) : (
+          <div className="font-script min-h-[420px] whitespace-pre-wrap border border-border bg-card/70 p-4 text-[15px] leading-7">
+            {previewParts?.length ? (
+              previewParts.map((p) =>
+                p.red ? (
+                  <mark key={p.key} className="redmark">{p.text}</mark>
+                ) : (
+                  <span key={p.key}>{p.text}</span>
+                ),
+              )
+            ) : (
+              <span className="text-muted-foreground/60">暂无内容</span>
+            )}
+          </div>
+        )}
+      </div>
 
       {segments.length > 0 && (
         <div className="space-y-2">
