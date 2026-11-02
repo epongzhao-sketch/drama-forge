@@ -207,6 +207,9 @@ export default function Workspace() {
                 outlines={data.outlines}
                 totalEpisodes={status.total}
                 ready={status.hasBible}
+                canTransplant={(data.sample?.redSegments.length ?? 0) > 0}
+                transplants={data.transplants}
+                outlineEval={data.evaluations.find((e) => e.scope === "outline")?.report ?? null}
                 onDone={refresh}
               />
             )}
@@ -216,6 +219,10 @@ export default function Workspace() {
                 outlines={data.outlines}
                 scripts={data.scripts}
                 totalEpisodes={status.total}
+                transplants={data.transplants}
+                scriptEvals={data.evaluations
+                  .filter((e) => e.scope === "script")
+                  .map((e) => ({ epNo: e.epNo, report: e.report }))}
                 onDone={refresh}
               />
             )}
@@ -229,6 +236,11 @@ export default function Workspace() {
                 <div className="border border-border bg-card/60 px-3.5 py-3">
                   <p className="mono-label text-[9px] text-primary">爆款基因</p>
                   <p className="mt-1.5 text-xs font-medium">{data.analysis.genre}</p>
+                  {data.analysis.coreExpectation && (
+                    <p className="mt-1.5 border-l-2 border-primary/50 pl-2 text-[11px] leading-relaxed text-foreground/80">
+                      {data.analysis.coreExpectation}
+                    </p>
+                  )}
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{data.analysis.tropeSummary}</p>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {data.analysis.hookTypes.slice(0, 4).map((h, i) => (

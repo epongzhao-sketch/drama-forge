@@ -233,8 +233,8 @@ export function SampleEditor({
           </div>
           <div className="grid gap-1.5">
             {segments.map((s, i) => (
-              <div key={s.id} className="flex items-start gap-3 border border-border bg-card/60 px-3 py-2">
-                <span className="mono-label mt-0.5 text-[10px] text-destructive">R{String(i + 1).padStart(2, "0")}</span>
+              <div key={s.id} className="flex min-w-0 items-start gap-3 border border-border bg-card/60 px-3 py-2">
+                <span className="mono-label mt-0.5 shrink-0 text-[10px] text-destructive">R{String(i + 1).padStart(2, "0")}</span>
                 <p className="min-w-0 flex-1 truncate text-xs text-foreground/80">
                   {content.slice(s.start, s.end).replace(/\n/g, " ⏎ ") || "（区间失效）"}
                 </p>

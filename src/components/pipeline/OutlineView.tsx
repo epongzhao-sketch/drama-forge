@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import type { OutlineEpisode } from "@contracts/pipeline";
+import type { EvalReport, OutlineEpisode, TransplantMapping } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating, Led } from "@/components/chrome";
-import { ListOrdered, RefreshCw, Zap } from "lucide-react";
+import { EvalReportView } from "@/components/pipeline/EvalReportView";
+import { ArrowRight, ListOrdered, RefreshCw, Scissors, ShieldCheck, Zap } from "lucide-react";
 
 const BATCH = 6;
 
@@ -12,12 +13,19 @@ export function OutlineView({
   outlines,
   totalEpisodes,
   ready,
+  canTransplant,
+  transplants,
+  outlineEval,
   onDone,
 }: {
   projectId: number;
   outlines: OutlineEpisode[];
   totalEpisodes: number;
   ready: boolean;
+  /** 样本里有红标段（可生成移植方案） */
+  canTransplant: boolean;
+  transplants: TransplantMapping[] | null;
+  outlineEval: EvalReport | null;
   onDone: () => void;
 }) {
   const [regenEp, setRegenEp] = useState<number | null>(null);
@@ -28,8 +36,16 @@ export function OutlineView({
     },
     onError: () => setRegenEp(null),
   });
+  const transplantMut = trpc.pipeline.generateTransplants.useMutation({ onSuccess: onDone });
+  const evalMut = trpc.pipeline.evaluateOutlines.useMutation({ onSuccess: onDone });
 
   const byEp = new Map(outlines.map((o) => [o.epNo, o]));
+  const transplantByEp = new Map<number, TransplantMapping[]>();
+  for (const m of transplants ?? []) {
+    const list = transplantByEp.get(m.targetEp) ?? [];
+    list.push(m);
+    transplantByEp.set(m.targetEp, list);
+  }
   let nextFrom = 1;
   for (let i = 1; i <= totalEpisodes; i++) {
     if (!byEp.has(i)) {
@@ -55,9 +71,12 @@ export function OutlineView({
           <Led tone={outlines.length ? "mint" : undefined} />
           Episode Outlines · {outlines.length} / {totalEpisodes} 集
         </p>
-        <div className="flex h-1 flex-1 min-w-24 gap-px bg-border">
+        <div className="flex h-1 min-w-24 flex-1 gap-px bg-border">
           {Array.from({ length: totalEpisodes }, (_, i) => (
-            <span key={i} className={`h-full flex-1 ${byEp.has(i + 1) ? "bg-primary" : ""}`} />
+            <span
+              key={i}
+              className={`h-full flex-1 ${byEp.has(i + 1) ? (transplantByEp.has(i + 1) ? "bg-destructive" : "bg-primary") : ""}`}
+            />
           ))}
         </div>
         {!done ? (
@@ -75,12 +94,24 @@ export function OutlineView({
         ) : (
           <span className="mono-label text-[10px] text-primary">全部生成完毕</span>
         )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => evalMut.mutate({ projectId })}
+          disabled={outlines.length === 0 || evalMut.isPending}
+          className="h-9 gap-1.5"
+        >
+          <ShieldCheck className={`h-3.5 w-3.5 ${evalMut.isPending ? "animate-pulse" : ""}`} />
+          {evalMut.isPending ? "质检中…" : outlineEval ? "重新质检" : "判档质检"}
+        </Button>
       </div>
 
       {genMut.isPending && regenEp === null && (
         <Generating text={`正在生成第 ${nextFrom} 集起的分集大纲…`} />
       )}
+      {evalMut.isPending && <Generating text="撒冷方法论判档中（核心期待 → 决策树 → 改法定级）…" />}
       {genMut.error && <ErrorBox message={genMut.error.message} />}
+      {evalMut.error && <ErrorBox message={evalMut.error.message} />}
 
       {!ready && (
         <p className="border border-primary/40 bg-primary/10 px-3 py-2 text-xs text-primary">
@@ -104,6 +135,7 @@ export function OutlineView({
             .filter((ep) => byEp.has(ep))
             .map((ep) => {
               const o = byEp.get(ep)!;
+              const tp = transplantByEp.get(ep);
               return (
                 <div
                   key={ep}
@@ -122,12 +154,31 @@ export function OutlineView({
                           Paywall
                         </span>
                       )}
+                      {tp && (
+                        <span className="mono-label border border-destructive/50 bg-destructive/10 px-1.5 py-0.5 text-[9px] text-destructive">
+                          桥段移植 ×{tp.length}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{o.summary}</p>
                     <p className="mt-1.5 text-xs">
                       <span className="mono-label mr-1.5 text-[9px] text-primary">Hook</span>
                       <span className="text-foreground/85">{o.hook}</span>
                     </p>
+                    {tp && (
+                      <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                        {tp.map((m, i) => (
+                          <p key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                            <span className="mono-label mt-px shrink-0 text-[9px] text-destructive">
+                              {m.bridgeType}
+                            </span>
+                            <span className="font-script text-destructive/80">“{m.sourceQuote}”</span>
+                            <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/60" />
+                            <span>{m.spec}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => regen(ep)}
@@ -141,6 +192,67 @@ export function OutlineView({
                 </div>
               );
             })}
+        </div>
+      )}
+
+      {/* 桥段移植方案 */}
+      <div className="space-y-3 border border-border bg-card/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="mono-label flex items-center gap-2">
+            <Scissors className="h-3.5 w-3.5 text-destructive" />
+            Bridge Transplant · 爆款桥段移植方案
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => transplantMut.mutate({ projectId })}
+            disabled={!ready || !canTransplant || transplantMut.isPending}
+            className="h-8 gap-1.5 text-xs"
+          >
+            <RefreshCw className={`h-3 w-3 ${transplantMut.isPending ? "animate-spin" : ""}`} />
+            {transplantMut.isPending ? "换算中…" : transplants ? "重新生成移植方案" : "生成移植方案"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          把样本里标红的投流素材段，按原剧位置比例换算到新剧集数，落地为每集的拍摄级写法要点；写剧本时会自动注入对应集。
+        </p>
+        {!canTransplant && (
+          <p className="text-[11px] text-primary/80">样本中没有红标段 —— 先在「样本录入」里标红投流素材段。</p>
+        )}
+        {transplantMut.error && <ErrorBox message={transplantMut.error.message} />}
+        {transplants && transplants.length > 0 && (
+          <div className="space-y-1.5">
+            {[...transplants]
+              .sort((a, b) => a.targetEp - b.targetEp)
+              .map((m, i) => (
+                <div key={i} className="flex items-start gap-3 border border-border bg-background/40 px-3 py-2.5">
+                  <span className="mono-label mt-0.5 w-12 shrink-0 text-[10px] text-primary">
+                    → E{String(m.targetEp).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-xs">
+                      <span className="mono-label mr-1.5 border border-destructive/40 px-1 text-[9px] text-destructive">
+                        {m.bridgeType}
+                      </span>
+                      <span className="font-script text-destructive/85">“{m.sourceQuote}”</span>
+                      <span className="ml-1.5 text-[10px] text-muted-foreground">（{m.sourcePosition}）</span>
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">{m.spec}</p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* 大纲判档报告 */}
+      {outlineEval && (
+        <div className="space-y-2">
+          <p className="mono-label flex items-center gap-2">
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+            Outline Verdict · 大纲判档报告（建议性，不阻断流程）
+          </p>
+          <EvalReportView report={outlineEval} />
         </div>
       )}
     </div>

@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/providers/trpc";
-import type { EpisodeScript, OutlineEpisode } from "@contracts/pipeline";
+import type { EpisodeScript, EvalReport, OutlineEpisode, TransplantMapping } from "@contracts/pipeline";
+import { VERDICT_LABELS } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
-import { Copy, Download, Film, Languages, Play, Check } from "lucide-react";
+import { EvalReportView } from "@/components/pipeline/EvalReportView";
+import { Copy, Download, Film, Languages, Play, Check, Scissors, ShieldCheck } from "lucide-react";
 
 type ScriptRow = { epNo: number; contentZh: EpisodeScript | null; contentEn: EpisodeScript | null };
 
@@ -23,7 +25,23 @@ function formatScript(s: EpisodeScript, lang: "zh" | "en"): string {
   return lines.join("\n");
 }
 
-function ScriptDoc({ script, lang }: { script: EpisodeScript; lang: "zh" | "en" }) {
+const VERDICT_BAR: Record<string, string> = {
+  pass: "bg-[hsl(var(--mint))]",
+  pass_with_fixes: "bg-sky-400",
+  revise_resubmit: "bg-primary",
+  fail: "bg-destructive",
+};
+
+function ScriptDoc({
+  script,
+  lang,
+  transplantScenes,
+}: {
+  script: EpisodeScript;
+  lang: "zh" | "en";
+  transplantScenes?: number[];
+}) {
+  const tp = new Set(transplantScenes ?? []);
   return (
     <div className="border border-border bg-card/70">
       <div className="border-b border-border px-4 py-3">
@@ -37,8 +55,17 @@ function ScriptDoc({ script, lang }: { script: EpisodeScript; lang: "zh" | "en" 
       <div className="space-y-5 px-4 py-5 md:px-6">
         {script.scenes.map((sc) => (
           <div key={sc.sceneNo}>
-            <p className="font-mono2 border-l-2 border-primary pl-3 text-xs font-semibold uppercase tracking-wider text-primary">
+            <p
+              className={`font-mono2 border-l-2 pl-3 text-xs font-semibold uppercase tracking-wider ${
+                tp.has(sc.sceneNo) ? "border-destructive text-destructive" : "border-primary text-primary"
+              }`}
+            >
               {lang === "zh" ? `场景 ${sc.sceneNo}` : `SCENE ${sc.sceneNo}`} · {sc.location} · {sc.time}
+              {tp.has(sc.sceneNo) && (
+                <span className="mono-label ml-2 border border-destructive/50 bg-destructive/10 px-1 py-0.5 text-[9px] normal-case tracking-normal">
+                  红标桥段移植
+                </span>
+              )}
             </p>
             <div className="mt-3 space-y-2.5">
               {sc.beats.map((b, i) =>
@@ -72,16 +99,30 @@ export function ScriptStudio({
   outlines,
   scripts,
   totalEpisodes,
+  transplants,
+  scriptEvals,
   onDone,
 }: {
   projectId: number;
   outlines: OutlineEpisode[];
   scripts: ScriptRow[];
   totalEpisodes: number;
+  transplants: TransplantMapping[] | null;
+  scriptEvals: { epNo: number; report: EvalReport }[];
   onDone: () => void;
 }) {
   const scriptMap = useMemo(() => new Map(scripts.map((s) => [s.epNo, s])), [scripts]);
   const outlineSet = useMemo(() => new Set(outlines.map((o) => o.epNo)), [outlines]);
+  const evalMap = useMemo(() => new Map(scriptEvals.map((e) => [e.epNo, e.report])), [scriptEvals]);
+  const transplantByEp = useMemo(() => {
+    const m = new Map<number, TransplantMapping[]>();
+    for (const t of transplants ?? []) {
+      const list = m.get(t.targetEp) ?? [];
+      list.push(t);
+      m.set(t.targetEp, list);
+    }
+    return m;
+  }, [transplants]);
   const [selected, setSelected] = useState<number>(() => scripts[0]?.epNo ?? outlines[0]?.epNo ?? 1);
   const [lang, setLang] = useState<"zh" | "en">("zh");
   const [batch, setBatch] = useState<{ running: boolean; current: number | null }>({ running: false, current: null });
@@ -90,11 +131,15 @@ export function ScriptStudio({
 
   const genMut = trpc.pipeline.generateScript.useMutation({ onSuccess: onDone });
   const trMut = trpc.pipeline.translateScript.useMutation({ onSuccess: onDone });
+  const evalMut = trpc.pipeline.evaluateScript.useMutation({ onSuccess: onDone });
 
   const row = scriptMap.get(selected);
   const outline = outlines.find((o) => o.epNo === selected);
   const activeScript = lang === "zh" ? row?.contentZh : row?.contentEn;
-  const pending = genMut.isPending || trMut.isPending;
+  const selectedEval = evalMap.get(selected);
+  const selectedTransplants = transplantByEp.get(selected);
+  const transplantScenes = row?.contentZh?.transplantScenes ?? [];
+  const pending = genMut.isPending || trMut.isPending || evalMut.isPending;
 
   const eps = Array.from({ length: totalEpisodes }, (_, i) => i + 1);
 
@@ -150,12 +195,16 @@ export function ScriptStudio({
             const r = scriptMap.get(ep);
             const hasOutline = outlineSet.has(ep);
             const active = ep === selected;
+            const ev = evalMap.get(ep);
             return (
               <button
                 key={ep}
                 onClick={() => setSelected(ep)}
                 disabled={!hasOutline && !r}
-                title={hasOutline ? `第 ${ep} 集` : `第 ${ep} 集（尚无大纲）`}
+                title={
+                  (hasOutline ? `第 ${ep} 集` : `第 ${ep} 集（尚无大纲）`) +
+                  (ev ? ` · 质检：${VERDICT_LABELS[ev.verdict]}` : "")
+                }
                 className={`relative flex h-11 items-center justify-center border font-mono2 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   active
                     ? "border-primary bg-primary/15 text-primary"
@@ -172,6 +221,10 @@ export function ScriptStudio({
                     }`}
                   />
                 )}
+                {transplantByEp.has(ep) && (
+                  <span className="absolute left-1 top-1 h-1.5 w-1.5 bg-destructive" title="本集有桥段移植" />
+                )}
+                {ev && <span className={`absolute inset-x-0 bottom-0 h-0.5 ${VERDICT_BAR[ev.verdict]}`} />}
               </button>
             );
           })}
@@ -179,6 +232,8 @@ export function ScriptStudio({
         <div className="space-y-1.5 text-[10px] text-muted-foreground">
           <p className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> 已有中文剧本</p>
           <p className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--mint))]" /> 中英双语齐</p>
+          <p className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 bg-destructive" /> 本集有红标桥段移植</p>
+          <p className="flex items-center gap-1.5"><span className="h-0.5 w-3 bg-sky-400" /> 底部色条 = 质检判定</p>
         </div>
         {nextMissing > 0 && (
           <Button
@@ -211,6 +266,18 @@ export function ScriptStudio({
             ))}
           </div>
           <div className="flex-1" />
+          {row?.contentZh && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => evalMut.mutate({ projectId, epNo: selected })}
+              disabled={pending || batch.running}
+              className="h-9 gap-1.5"
+            >
+              <ShieldCheck className={`h-3.5 w-3.5 ${evalMut.isPending ? "animate-pulse" : ""}`} />
+              {evalMut.isPending ? "质检中…" : selectedEval ? "重新质检" : "本集质检"}
+            </Button>
+          )}
           {activeScript && (
             <>
               <Button variant="outline" size="sm" onClick={copyScript} className="h-9 gap-1.5">
@@ -225,8 +292,8 @@ export function ScriptStudio({
           )}
         </div>
 
-        {(genMut.error || trMut.error) && (
-          <ErrorBox message={(genMut.error ?? trMut.error)?.message} />
+        {(genMut.error || trMut.error || evalMut.error) && (
+          <ErrorBox message={(genMut.error ?? trMut.error ?? evalMut.error)?.message} />
         )}
         {batchError && <ErrorBox message={batchError} />}
 
@@ -237,13 +304,36 @@ export function ScriptStudio({
                 ? `自动连拍中：正在生成第 ${batch.current ?? "…"} 集剧本…`
                 : genMut.isPending
                   ? `正在生成第 ${selected} 集剧本…`
-                  : "正在翻译英文版…"
+                  : trMut.isPending
+                    ? "正在翻译英文版…"
+                    : `正在对第 ${selected} 集做判档质检…`
             }
           />
         )}
 
+        {/* 本集移植桥段提示 */}
+        {selectedTransplants && (
+          <div className="space-y-1.5 border border-destructive/30 bg-destructive/5 px-3.5 py-3">
+            <p className="mono-label flex items-center gap-1.5 text-[10px] text-destructive">
+              <Scissors className="h-3 w-3" />
+              本集安排 {selectedTransplants.length} 个红标桥段移植
+              {transplantScenes.length > 0 && ` · 落在场景 ${transplantScenes.join("、")}`}
+            </p>
+            {selectedTransplants.map((m, i) => (
+              <p key={i} className="text-[11px] leading-relaxed text-muted-foreground">
+                <span className="mono-label mr-1 text-[9px] text-destructive">{m.bridgeType}</span>
+                {m.spec}
+              </p>
+            ))}
+          </div>
+        )}
+
         {activeScript ? (
-          <ScriptDoc script={activeScript} lang={lang} />
+          <ScriptDoc
+            script={activeScript}
+            lang={lang}
+            transplantScenes={lang === "zh" ? transplantScenes : row?.contentZh?.transplantScenes}
+          />
         ) : (
           <div className="flex flex-col items-center gap-4 border border-dashed border-border px-6 py-16 text-center">
             <Film className="h-8 w-8 text-primary" />
@@ -292,6 +382,17 @@ export function ScriptStudio({
             <Languages className="h-3.5 w-3.5" />
             本集还没有英文版 —— 点击翻译
           </button>
+        )}
+
+        {/* 本集判档报告 */}
+        {selectedEval && (
+          <div className="space-y-2">
+            <p className="mono-label flex items-center gap-2 text-[10px]">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              Script Verdict · 第 {selected} 集判档报告（建议性，不阻断流程）
+            </p>
+            <EvalReportView report={selectedEval} />
+          </div>
         )}
       </div>
     </div>

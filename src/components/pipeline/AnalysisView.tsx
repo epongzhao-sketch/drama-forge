@@ -75,11 +75,42 @@ export function AnalysisView({
       {runMut.error && <ErrorBox message={runMut.error.message} />}
 
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="题材定位">{analysis.genre}</Field>
+        <Field label="题材定位">
+          {analysis.dramaType ? (
+            <>
+              <span className="mr-2 border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                {analysis.dramaType}
+              </span>
+              {analysis.genre}
+            </>
+          ) : (
+            analysis.genre
+          )}
+        </Field>
         <Field label="核心套路">{analysis.tropeSummary}</Field>
         <Field label="主角人设">{analysis.protagonist}</Field>
         <Field label="反派 / 阻力">{analysis.antagonist}</Field>
       </div>
+
+      {analysis.coreExpectation && (
+        <div className="border border-primary/50 bg-primary/5 px-4 py-3.5">
+          <p className="mono-label text-[10px] text-primary">
+            Core Expectation · 核心期待（观众为什么付费）
+          </p>
+          <p className="mt-2 text-sm font-medium leading-relaxed">{analysis.coreExpectation}</p>
+          {(analysis.elements?.length ?? 0) > 0 && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="mono-label text-[10px] text-muted-foreground">服务期待的元素（可换皮）：</span>
+              {analysis.elements!.map((e, i) => (
+                <span key={i} className="border border-border bg-card px-2 py-0.5 text-xs text-foreground/80">
+                  {e}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <Field label="核心冲突">{analysis.coreConflict}</Field>
 
       <div className="grid gap-3 md:grid-cols-2">

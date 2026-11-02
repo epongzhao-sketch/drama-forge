@@ -9,8 +9,11 @@ export interface RedSegment {
   note?: string;
 }
 
-/** AI 拆解结果 */
+/** AI 拆解结果（V38.5：核心期待 × 元素 强制分离） */
 export interface AnalysisResult {
+  dramaType: string;
+  coreExpectation: string;
+  elements: string[];
   genre: string;
   tropeSummary: string;
   protagonist: string;
@@ -22,6 +25,39 @@ export interface AnalysisResult {
   redSegmentTraits: { quote: string; trait: string }[];
   transferableElements: string[];
   marketFit: string;
+}
+
+/** 爆款桥段移植：红标段 → 新剧目标集 的换算映射 */
+export interface TransplantMapping {
+  redSegmentId: string;
+  sourceQuote: string;
+  sourcePosition: string;
+  targetEp: number;
+  bridgeType: string;
+  spec: string;
+}
+
+/** 判档结论 */
+export type EvalVerdict = "pass" | "pass_with_fixes" | "revise_resubmit" | "fail";
+
+export const VERDICT_LABELS: Record<EvalVerdict, string> = {
+  pass: "通过",
+  pass_with_fixes: "通过（附改法）",
+  revise_resubmit: "修改后重提",
+  fail: "不通过",
+};
+
+/** 判档质检报告（三栏：阻挡项 / 优化项 / 体量与赛道） */
+export interface EvalReport {
+  scope: "outline" | "script";
+  epNo?: number;
+  verdict: EvalVerdict;
+  grade?: string;
+  coreExpectationCheck: string;
+  blockers: { issue: string; fix: string; level: string }[];
+  optimizations: { issue: string; fix: string }[];
+  volumeTrack: string;
+  summary: string;
 }
 
 /** 换皮设定（用户输入） */
@@ -78,6 +114,8 @@ export interface EpisodeScript {
   title: string;
   scenes: ScriptScene[];
   cliffhanger: string;
+  /** 移植桥段所在的场景号（成稿重点描写的素材段场景） */
+  transplantScenes?: number[];
 }
 
 export const PIPELINE_STAGES = [

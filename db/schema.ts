@@ -127,6 +127,33 @@ export const scripts = mysqlTable(
   (t) => [uniqueIndex("scripts_project_ep").on(t.projectId, t.epNo)],
 );
 
+/** 爆款桥段移植方案（1:1 项目） */
+export const transplants = mysqlTable("transplants", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true })
+    .notNull()
+    .unique(),
+  mappings: json("mappings").notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+/** 判档质检报告（大纲：epNo=0；单集剧本：epNo=集号） */
+export const evaluations = mysqlTable(
+  "evaluations",
+  {
+    id: serial("id").primaryKey(),
+    projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+    scope: varchar("scope", { length: 16 }).notNull(),
+    epNo: int("epNo").notNull().default(0),
+    report: json("report").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("evaluations_project_scope_ep").on(t.projectId, t.scope, t.epNo)],
+);
+
 export type Project = typeof projects.$inferSelect;
 export type Sample = typeof samples.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
@@ -134,3 +161,5 @@ export type Remap = typeof remaps.$inferSelect;
 export type Bible = typeof bibles.$inferSelect;
 export type Outline = typeof outlines.$inferSelect;
 export type Script = typeof scripts.$inferSelect;
+export type Transplant = typeof transplants.$inferSelect;
+export type Evaluation = typeof evaluations.$inferSelect;
