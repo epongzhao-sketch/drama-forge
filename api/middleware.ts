@@ -6,6 +6,10 @@ import { log } from "./lib/logger";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  // 流式心跳：AI 长任务（拆解/出方案/写剧本包）动辄 1-2 分钟，普通 JSON 响应全程零字节，
+  // 反向代理 ~60s 闲置就掐断，浏览器拿到空响应体 → "Unexpected end of JSON input"。
+  // 客户端用 httpBatchStreamLink 后，响应是 jsonl 流，pingMs 让服务端每 4s 推一个空白心跳保活。
+  jsonl: { pingMs: 4000 },
   // G9: a procedure that throws never reaches app.onError — the tRPC fetch
   // adapter catches it and returns its own 500 JSON, so the Hono error handler
   // is bypassed entirely. That left the most common real failure (a mutation
