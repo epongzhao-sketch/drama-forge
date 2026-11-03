@@ -17,15 +17,6 @@ export function formatScript(s: EpisodeScript): string {
   return lines.join("\n");
 }
 
-export function formatScene(sc: ScriptScene): string {
-  const lines: string[] = [`【场景 ${sc.sceneNo}】${sc.location} — ${sc.time}`];
-  for (const b of sc.beats) {
-    if (b.type === "dialogue") lines.push(`${b.character ?? "?"}：${b.text}`);
-    else lines.push(`（${b.text}）`);
-  }
-  return lines.join("\n");
-}
-
 export function SceneBlock({ sc, highlight }: { sc: ScriptScene; highlight?: boolean }) {
   return (
     <div>

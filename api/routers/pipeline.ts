@@ -90,16 +90,17 @@ const episodeScriptSchema = z.object({
 
 const promoClipSchema = z.object({
   id: z.string(),
-  positionHint: z.string().describe("建议落点，如 '第8集前后' / '大结局前'，不要求与连贯集衔接"),
-  premise: z.string().describe("这段戏的情境前提，让观众秒懂"),
-  scene: scriptSceneSchema,
+  epNo: z.number().int().describe("该素材实际落在全剧的第几集（如 9、21），与连贯集的 1~5 不连续"),
+  positionHint: z.string().describe("落点说明，如 '付费卡点前一集' / '大结局前的高潮'"),
+  premise: z.string().describe("情境前提，让没看过前情的观众秒懂这段戏"),
+  episode: episodeScriptSchema.describe("完整的一集剧本（多场景 + 结尾悬念）"),
   hookLine: z.string().describe("可直接上大字幕的金句"),
 });
 
 const conceptPackSchema = z.object({
   logline: z.string().describe("本方案一句话卖点"),
   episodes: z.array(episodeScriptSchema).min(3).max(5).describe("3~5 集连贯剧本，本身即可投流"),
-  promoClips: z.array(promoClipSchema).length(2).describe("2 段不连贯的投流素材剧本原文"),
+  promoClips: z.array(promoClipSchema).length(2).describe("2 集不连贯的投流素材（完整单集剧本）"),
 });
 
 /** 判档质检报告 */
@@ -448,7 +449,7 @@ export const pipelineRouter = createRouter({
             "",
             "【产出要求】",
             "1. episodes：3~5 集**连贯**剧本（epNo 从 1 连续编号）。这前几集本身就必须是可投流的素材——开场 3 秒出钩子、每集结尾强悬念、把最炸的情绪点前置。",
-            "2. promoClips：**恰好 2 段不连贯的投流素材剧本**。它们可以发生在后面任意集数（比如第 8 集、大结局前），不要求与前 3~5 集情节连续——因为投流素材本来就常常取自全剧最炸的段落，不一定都在开头。每段是一个独立高密度单场戏， premise 要让完全没看过前情的观众秒懂。",
+            "2. promoClips：**恰好 2 集不连贯的投流素材**。它们各自是一集**完整的剧本**（2-4 个场景 + 结尾悬念），但集号不与前面连贯集衔接——因为投流素材常取自全剧最炸的段落，不一定在开头。每集要标出它实际落在全剧第几集（epNo，比如 9、21，需大于连贯集的最大集号且不超过总集数），并给一句 premise 让没看过前情的观众秒懂这段戏。",
             "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢；关键信息用可视物证呈现；狠话改当下动作。",
             "4. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
             "",

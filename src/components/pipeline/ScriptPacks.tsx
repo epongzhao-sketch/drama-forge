@@ -4,20 +4,27 @@ import { trpc } from "@/providers/trpc";
 import type { RemapPool, ConceptScriptPack, PromoClip } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
-import { EpisodeDoc, SceneBlock, formatScript, formatScene } from "@/components/pipeline/ScriptDoc";
+import { EpisodeDoc, SceneBlock, formatScript } from "@/components/pipeline/ScriptDoc";
 import { Clapperboard, Copy, Download, Scissors, Check } from "lucide-react";
 
 function PromoClipDoc({ clip }: { clip: PromoClip }) {
   return (
     <div className="border border-destructive/40 bg-destructive/5">
       <div className="border-b border-destructive/30 px-4 py-3">
-        <p className="mono-label text-[10px] text-destructive">投流素材 · 不连贯</p>
-        <h4 className="mt-1 text-sm font-semibold">{clip.positionHint}</h4>
-        <p className="mt-1 text-xs text-muted-foreground">{clip.premise}</p>
+        <p className="mono-label text-[10px] text-destructive">投流素材 · 完整单集 · 不连贯</p>
+        <h4 className="mt-1 text-sm font-semibold">第 {clip.epNo} 集 · {clip.episode.title}</h4>
+        <p className="mono-label mt-0.5 text-[9px] text-muted-foreground">{clip.positionHint}</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">{clip.premise}</p>
       </div>
-      <div className="px-4 py-4">
-        <SceneBlock sc={clip.scene} highlight />
-        <div className="mt-3 border border-l-2 border-border border-l-destructive bg-card/60 px-3 py-2">
+      <div className="space-y-5 px-4 py-5 md:px-6">
+        {clip.episode.scenes.map((sc) => (
+          <SceneBlock key={sc.sceneNo} sc={sc} highlight />
+        ))}
+        <div className="border border-l-2 border-border border-l-destructive bg-card/60 px-4 py-3">
+          <p className="mono-label text-[9px] text-destructive">Cliffhanger</p>
+          <p className="font-script mt-1 text-sm leading-relaxed">{clip.episode.cliffhanger}</p>
+        </div>
+        <div className="border border-l-2 border-border border-l-destructive bg-card/60 px-3 py-2">
           <p className="mono-label text-[9px] text-destructive">大字幕金句</p>
           <p className="font-script mt-0.5 text-sm font-medium">{clip.hookLine}</p>
         </div>
@@ -30,8 +37,10 @@ function PackView({ pack }: { pack: ConceptScriptPack }) {
   const [copied, setCopied] = useState(false);
   const fullText =
     pack.episodes.map(formatScript).join("\n\n\n") +
-    "\n\n\n===== 投流素材（不连贯） =====\n\n" +
-    pack.promoClips.map((c) => `【${c.positionHint}】${c.premise}\n\n${formatScene(c.scene)}\n【金句】${c.hookLine}`).join("\n\n");
+    "\n\n\n===== 投流素材（完整单集 · 不连贯） =====\n\n" +
+    pack.promoClips
+      .map((c) => `【第${c.epNo}集 · ${c.positionHint}】${c.premise}\n\n${formatScript(c.episode)}\n【金句】${c.hookLine}`)
+      .join("\n\n");
 
   const copy = async () => {
     await navigator.clipboard.writeText(fullText);
@@ -60,7 +69,7 @@ function PackView({ pack }: { pack: ConceptScriptPack }) {
       </div>
       {pack.episodes.map((ep) => <EpisodeDoc key={ep.epNo} script={ep} />)}
       <p className="mono-label flex items-center gap-1.5 text-[10px] text-destructive">
-        <Scissors className="h-3 w-3" /> Promo Clips · 2 段不连贯投流素材
+        <Scissors className="h-3 w-3" /> Promo Clips · 2 集不连贯投流素材
       </p>
       {pack.promoClips.map((c) => <PromoClipDoc key={c.id} clip={c} />)}
     </div>
@@ -123,7 +132,7 @@ export function ScriptPacks({
               <Button onClick={() => genMut.mutate({ projectId, conceptId: activeId })} disabled={genMut.isPending}>
                 {genMut.isPending ? "正在产出剧本包…" : "产出该方案的剧本包"}
               </Button>
-              {genMut.isPending && <Generating text="正在写 3~5 集连贯剧本 + 2 段投流素材（约 1-2 分钟）…" />}
+              {genMut.isPending && <Generating text="正在写 3~5 集连贯剧本 + 2 集投流素材（约 2-3 分钟）…" />}
               {genMut.error && <ErrorBox message={genMut.error.message} />}
             </div>
           )}

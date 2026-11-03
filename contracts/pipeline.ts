@@ -148,21 +148,22 @@ export interface RemapPool {
   notes?: string;                   // 补充要求
 }
 
-/** 一段不连贯的投流素材剧本（可发生在后面任意集，单独成段） */
+/** 一段不连贯的投流素材：一集完整剧本，只是集号不与连贯集衔接（可发生在后面任意集） */
 export interface PromoClip {
   id: string;
-  positionHint: string;   // 建议落点（如 "第 8 集前后" / "大结局前"），不要求与连贯集衔接
-  premise: string;        // 这段戏的情境前提（让观众秒懂）
-  scene: ScriptScene;     // 单场高密度戏
-  hookLine: string;       // 可直接上大字幕的金句
+  epNo: number;             // 该素材实际落在全剧的第几集（如 9、21），与连贯集的 1~5 不连续
+  positionHint: string;     // 落点说明（如 "付费卡点前一集" / "大结局前的高潮"）
+  premise: string;          // 情境前提：让没看过前情的观众秒懂这段戏
+  episode: EpisodeScript;   // 完整的一集剧本（多场景 + 结尾悬念）
+  hookLine: string;         // 可直接上大字幕的金句
 }
 
-/** 一个入选换皮方案的完整产出包：3~5 集连贯剧本 + 2 段不连贯投流素材 */
+/** 一个入选换皮方案的完整产出包：3~5 集连贯剧本 + 2 集不连贯投流素材 */
 export interface ConceptScriptPack {
   conceptId: string;
   logline: string;                 // 本方案一句话卖点
   episodes: EpisodeScript[];       // 3~5 集连贯剧本（本身即可投流）
-  promoClips: PromoClip[];         // 2 段不连贯投流素材剧本原文
+  promoClips: PromoClip[];         // 2 集不连贯投流素材（完整单集剧本）
   status: "pending" | "generating" | "done" | "error";
 }
 
