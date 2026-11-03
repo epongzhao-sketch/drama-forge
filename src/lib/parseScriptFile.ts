@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import type { RedSegment } from "@contracts/pipeline";
+import { extractPdfText, renderPdfPageImages, MIN_TEXT_CHARS } from "./pdfClient";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -170,7 +171,7 @@ export async function parseDocx(buf: ArrayBuffer): Promise<ParsedScript> {
   return { text, segments: valid };
 }
 
-/** 按文件类型解析上传的剧本文件（PDF 走服务端 /api/upload/script；onProgress 接收识别进度文案） */
+/** 按文件类型解析上传的剧本文件（PDF 文本层在本地解析，仅扫描件页图走服务端 /api/upload/vision；onProgress 接收识别进度文案） */
 export async function parseScriptFile(
   file: File,
   onProgress?: (detail: string) => void,
@@ -187,12 +188,29 @@ export async function parseScriptFile(
     if (file.size > 30 * 1024 * 1024) {
       throw new Error("PDF 超过 30MB 上限 —— 建议拆分成单集文件再上传");
     }
+    // 文本层抽取在浏览器本地完成（无需上传）；只有扫描件才把页面图像发给服务端做视觉识别
+    // 注意：同一个 ArrayBuffer 只能传一次（pdfjs 会 detach），文本与渲染各需独立副本
+    const raw = await file.arrayBuffer();
+    onProgress?.("正在解析 PDF 文本层…");
+    const text = await extractPdfText(raw.slice(0));
+    if (text.length >= MIN_TEXT_CHARS) {
+      return { text, segments: [], hasRed: false };
+    }
+    // 扫描件路径：浏览器渲染页图 → 服务端 Claude 视觉转写（NDJSON 心跳流）
+    onProgress?.("文本层为空，正在渲染页面图像…");
+    const images = await renderPdfPageImages(raw.slice(0));
+    if (images.length === 0) {
+      throw new Error("这份 PDF 既没有文字层也渲染不出页面 —— 文件可能损坏");
+    }
     const form = new FormData();
-    form.append("file", file);
+    images.forEach((b64, i) => {
+      const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+      form.append("images", new File([bytes], `page-${i + 1}.png`, { type: "image/png" }));
+    });
     // 响应是 NDJSON 心跳流：逐行读，最后一条 done 才是结果；流中断才报网络错误
     let res: Response;
     try {
-      res = await fetch("/api/upload/script", { method: "POST", body: form });
+      res = await fetch("/api/upload/vision", { method: "POST", body: form });
     } catch {
       throw new Error("网络连接中断 —— 请检查网络后重试（大文件上传建议稳定网络）");
     }
