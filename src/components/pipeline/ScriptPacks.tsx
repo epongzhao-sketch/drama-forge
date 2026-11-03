@@ -12,7 +12,7 @@ function PromoClipDoc({ clip }: { clip: PromoClip }) {
     <div className="border border-destructive/40 bg-destructive/5">
       <div className="border-b border-destructive/30 px-4 py-3">
         <p className="mono-label text-[10px] text-destructive">投流素材 · 完整单集 · 不连贯</p>
-        <h4 className="mt-1 text-sm font-semibold">第 {clip.epNo} 集 · {clip.episode.title}</h4>
+        <h4 className="mt-1 text-sm font-semibold">EP{clip.epNo} · {clip.episode.title}</h4>
         <p className="mono-label mt-0.5 text-[9px] text-muted-foreground">{clip.positionHint}</p>
         <p className="mt-1.5 text-xs text-muted-foreground">{clip.premise}</p>
       </div>
@@ -25,7 +25,7 @@ function PromoClipDoc({ clip }: { clip: PromoClip }) {
           <p className="font-script mt-1 text-sm leading-relaxed">{clip.episode.cliffhanger}</p>
         </div>
         <div className="border border-l-2 border-border border-l-destructive bg-card/60 px-3 py-2">
-          <p className="mono-label text-[9px] text-destructive">大字幕金句</p>
+          <p className="mono-label text-[9px] text-destructive">Hook Line · 大字幕金句</p>
           <p className="font-script mt-0.5 text-sm font-medium">{clip.hookLine}</p>
         </div>
       </div>
@@ -39,7 +39,7 @@ function PackView({ pack }: { pack: ConceptScriptPack }) {
     pack.episodes.map(formatScript).join("\n\n\n") +
     "\n\n\n===== 投流素材（完整单集 · 不连贯） =====\n\n" +
     pack.promoClips
-      .map((c) => `【第${c.epNo}集 · ${c.positionHint}】${c.premise}\n\n${formatScript(c.episode)}\n【金句】${c.hookLine}`)
+      .map((c) => `[EP${c.epNo} · ${c.positionHint}] ${c.premise}\n\n${formatScript(c.episode)}\n[HOOK LINE] ${c.hookLine}`)
       .join("\n\n");
 
   const copy = async () => {

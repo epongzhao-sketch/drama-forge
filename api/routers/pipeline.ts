@@ -173,6 +173,22 @@ async function saveRemapPool(projectId: number, pool: RemapPool) {
   }
 }
 
+/**
+ * 欧美海外短剧市场本地化纪律 —— 注入所有生成/评估 prompt，全程禁止中式元素。
+ * 这是硬约束：产出必须让北美/欧美观众看得懂、代入得了，不能出现中国特有的制度、
+ * 称谓、生活场景或文化梗。
+ */
+const LOCALIZATION_RULES = [
+  "【目标市场：欧美海外短剧（ReelShort / DramaBox / ShortMax 类），北美与欧美观众】",
+  "所有生成内容必须彻底本地化到欧美语境，严禁中式元素：",
+  "- 人物用英文名（Alex / Victoria / Damien…），不用中文名或拼音；",
+  "- 称谓用 ma'am / sir / Mr. / boss / 直呼其名，禁止「少爷/夫人/总/姐/哥」这类中式称呼；",
+  "- 制度与场景换成西方对应物：户口本→出生记录/信托文件，高考→SAT/大学录取，家族祠堂→家族庄园/董事会，单位/体制内→公司/集团，彩礼/嫁妆→婚前协议/信托；",
+  "- 不出现中式生活细节：四合院/摆酒/红包/中医/算命/风水/宗法制家庭伦理；",
+  "- 冲突与筹码用欧美观众熟悉的：股权、信托、遗嘱、董事会投票、媒体头条、法庭诉讼、竞选、医疗执照、体育联赛；",
+  "- 价值观对齐欧美爽点：个人逆袭、自我证明、反抗不公，而非「光宗耀祖/给家族交代」。",
+].join("\n");
+
 // ---------- router ----------
 
 export const pipelineRouter = createRouter({
@@ -336,6 +352,9 @@ export const pipelineRouter = createRouter({
             "- redSegmentTraits 里每个红标段的 trait 必须聚焦「这段之所以能爆的原因」——具体说清楚它命中了哪种情绪、制造了什么期待。",
             "- paywallPattern 必须回答三件事：卡点兑现的是什么期待、卡在第几集、由谁的主动选择构成（不能是巧合/误会自然解开）。",
             "",
+            LOCALIZATION_RULES,
+            "（拆解时若样本里出现中式元素，要在 transferableElements / marketFit 里指出它对应的欧美可迁移形式，而不是原样保留。）",
+            "",
             "===== 爆款样本 =====",
             marked,
             "===== 样本结束 =====",
@@ -380,6 +399,9 @@ export const pipelineRouter = createRouter({
             "每个方案都要：保留爆款的核心期待与被验证有效的元素，但题材、人设、世界观彻底换新，且 10 个方案之间必须覆盖差异足够大的赛道（不要都是同一类）。",
             "",
             "每个方案必须写清 twist——它凭什么能爆（差异化卖点），而不是泛泛说「很爽」。",
+            "",
+            LOCALIZATION_RULES,
+            "（10 个方案的主角名、背景、冲突筹码都必须落在欧美语境，禁止任何中式设定。）",
             "",
             "===== 爆款拆解报告 =====",
             `剧型赛道：${a.dramaType}`,
@@ -452,6 +474,11 @@ export const pipelineRouter = createRouter({
             "2. promoClips：**恰好 2 集不连贯的投流素材**。它们各自是一集**完整的剧本**（2-4 个场景 + 结尾悬念），但集号不与前面连贯集衔接——因为投流素材常取自全剧最炸的段落，不一定在开头。每集要标出它实际落在全剧第几集（epNo，比如 9、21，需大于连贯集的最大集号且不超过总集数），并给一句 premise 让没看过前情的观众秒懂这段戏。",
             "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢；关键信息用可视物证呈现；狠话改当下动作。",
             "4. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
+            "",
+            "【语言】剧本正文（场景头 location/time、动作 action、台词 text、金句 hookLine、cliffhanger）一律用**地道美式英文**写——这是要直接投给欧美演员的稿子；logline、premise、positionHint 用中文方便你审阅。",
+            "",
+            LOCALIZATION_RULES,
+            "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；场景头格式如 'INT. MANSION — NIGHT'。）",
             "",
             "===== 换皮方案 =====",
             `题材：${concept.genre}`,
@@ -534,6 +561,9 @@ export const pipelineRouter = createRouter({
             SCRIPT_STAGE_RULES,
             "",
             EVAL_OUTPUT_FORMAT,
+            "",
+            LOCALIZATION_RULES,
+            "（质检时若发现中式人名/称谓/制度/场景，计入阻挡项，要求改成欧美对应物。）",
             "",
             a?.coreExpectation ? `原爆款核心期待参考：${a.coreExpectation}` : "",
             "",

@@ -1,19 +1,20 @@
 // 剧本渲染与导出的共享组件：连贯集 & 投流素材段共用同一套视觉语言
+// 剧本正文是地道美式英文（欧美海外市场拍摄稿），UI 结构标签随之用英文
 import type { EpisodeScript, ScriptScene } from "@contracts/pipeline";
 
 export function formatScript(s: EpisodeScript): string {
   const lines: string[] = [];
-  lines.push(`第 ${s.epNo} 集《${s.title}》`);
+  lines.push(`EPISODE ${s.epNo} — "${s.title}"`);
   lines.push("");
   for (const sc of s.scenes) {
-    lines.push(`【场景 ${sc.sceneNo}】${sc.location} — ${sc.time}`);
+    lines.push(`[SCENE ${sc.sceneNo}] ${sc.location} — ${sc.time}`);
     for (const b of sc.beats) {
-      if (b.type === "dialogue") lines.push(`${b.character ?? "?"}：${b.text}`);
-      else lines.push(`（${b.text}）`);
+      if (b.type === "dialogue") lines.push(`${b.character ?? "?"}: ${b.text}`);
+      else lines.push(`(${b.text})`);
     }
     lines.push("");
   }
-  lines.push(`【本集悬念】${s.cliffhanger}`);
+  lines.push(`[CLIFFHANGER] ${s.cliffhanger}`);
   return lines.join("\n");
 }
 
@@ -25,7 +26,7 @@ export function SceneBlock({ sc, highlight }: { sc: ScriptScene; highlight?: boo
           highlight ? "border-destructive text-destructive" : "border-primary text-primary"
         }`}
       >
-        场景 {sc.sceneNo} · {sc.location} · {sc.time}
+        Scene {sc.sceneNo} · {sc.location} · {sc.time}
       </p>
       <div className="mt-3 space-y-2.5">
         {sc.beats.map((b, i) =>
@@ -52,7 +53,7 @@ export function EpisodeDoc({ script }: { script: EpisodeScript }) {
     <div className="border border-border bg-card/70">
       <div className="border-b border-border px-4 py-3">
         <p className="mono-label text-[10px] text-primary">EPISODE {script.epNo}</p>
-        <h3 className="mt-1 text-lg font-semibold">第 {script.epNo} 集 · {script.title}</h3>
+        <h3 className="mt-1 text-lg font-semibold">EP{script.epNo} · {script.title}</h3>
       </div>
       <div className="space-y-5 px-4 py-5 md:px-6">
         {script.scenes.map((sc) => (
