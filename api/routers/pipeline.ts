@@ -70,22 +70,27 @@ const conceptSchema = z.object({
 
 const scriptSceneSchema = z.object({
   sceneNo: z.number().int(),
-  location: z.string(),
-  time: z.string(),
+  location: z.string().describe("英文地点，如 INT. MANSION"),
+  locationZh: z.string().describe("中文地点，如 豪宅内"),
+  time: z.string().describe("英文时间，如 NIGHT"),
+  timeZh: z.string().describe("中文时间，如 夜"),
   beats: z.array(
     z.object({
       type: z.enum(["action", "dialogue"]),
       character: z.string().optional(),
-      text: z.string(),
+      en: z.string().describe("拍摄稿：地道美式英文台词/动作"),
+      zh: z.string().describe("审阅稿：对应的中文翻译"),
     }),
   ),
 });
 
 const episodeScriptSchema = z.object({
   epNo: z.number().int(),
-  title: z.string(),
+  title: z.string().describe("英文标题"),
+  titleZh: z.string().describe("中文标题"),
   scenes: z.array(scriptSceneSchema),
-  cliffhanger: z.string().describe("本集结尾悬念（下集钩子）"),
+  cliffhanger: z.string().describe("本集结尾悬念（英文，下集钩子）"),
+  cliffhangerZh: z.string().describe("结尾悬念中文"),
 });
 
 const promoClipSchema = z.object({
@@ -93,8 +98,9 @@ const promoClipSchema = z.object({
   epNo: z.number().int().describe("该素材实际落在全剧的第几集（如 9、21），与连贯集的 1~5 不连续"),
   positionHint: z.string().describe("落点说明，如 '付费卡点前一集' / '大结局前的高潮'"),
   premise: z.string().describe("情境前提，让没看过前情的观众秒懂这段戏"),
-  episode: episodeScriptSchema.describe("完整的一集剧本（多场景 + 结尾悬念）"),
-  hookLine: z.string().describe("可直接上大字幕的金句"),
+  episode: episodeScriptSchema.describe("完整的一集剧本（多场景 + 结尾悬念，中英双语）"),
+  hookLine: z.string().describe("可直接上大字幕的金句（英文）"),
+  hookLineZh: z.string().describe("金句中文"),
 });
 
 const conceptPackSchema = z.object({
@@ -475,10 +481,14 @@ export const pipelineRouter = createRouter({
             "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢；关键信息用可视物证呈现；狠话改当下动作。",
             "4. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
             "",
-            "【语言】剧本正文（场景头 location/time、动作 action、台词 text、金句 hookLine、cliffhanger）一律用**地道美式英文**写——这是要直接投给欧美演员的稿子；logline、premise、positionHint 用中文方便你审阅。",
+            "【语言：中英双语】剧本包全程双语输出——",
+            "- 英文（en/title/location/time/cliffhanger/hookLine）= 拍摄稿，用地道美式英文（场景头 'INT. MANSION — NIGHT' 格式），可直接投给欧美演员；",
+            "- 中文（zh/titleZh/locationZh/timeZh/cliffhangerZh/hookLineZh）= 审阅稿，是与英文逐条对应的准确中文翻译，方便编审校对；",
+            "- logline、premise、positionHint 用中文（给你看的说明文字）。",
+            "- 每条 beat 的 en 与 zh 必须一一对应、意思一致，不许漏译或自由发挥。",
             "",
             LOCALIZATION_RULES,
-            "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；场景头格式如 'INT. MANSION — NIGHT'。）",
+            "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文部分严禁任何中式表达。）",
             "",
             "===== 换皮方案 =====",
             `题材：${concept.genre}`,

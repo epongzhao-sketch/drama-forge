@@ -13,7 +13,8 @@ function PromoClipDoc({ clip }: { clip: PromoClip }) {
       <div className="border-b border-destructive/30 px-4 py-3">
         <p className="mono-label text-[10px] text-destructive">投流素材 · 完整单集 · 不连贯</p>
         <h4 className="mt-1 text-sm font-semibold">EP{clip.epNo} · {clip.episode.title}</h4>
-        <p className="mono-label mt-0.5 text-[9px] text-muted-foreground">{clip.positionHint}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{clip.episode.titleZh}</p>
+        <p className="mono-label mt-1 text-[9px] text-muted-foreground">{clip.positionHint}</p>
         <p className="mt-1.5 text-xs text-muted-foreground">{clip.premise}</p>
       </div>
       <div className="space-y-5 px-4 py-5 md:px-6">
@@ -21,12 +22,14 @@ function PromoClipDoc({ clip }: { clip: PromoClip }) {
           <SceneBlock key={sc.sceneNo} sc={sc} highlight />
         ))}
         <div className="border border-l-2 border-border border-l-destructive bg-card/60 px-4 py-3">
-          <p className="mono-label text-[9px] text-destructive">Cliffhanger</p>
+          <p className="mono-label text-[9px] text-destructive">Cliffhanger · 本集悬念</p>
           <p className="font-script mt-1 text-sm leading-relaxed">{clip.episode.cliffhanger}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{clip.episode.cliffhangerZh}</p>
         </div>
         <div className="border border-l-2 border-border border-l-destructive bg-card/60 px-3 py-2">
           <p className="mono-label text-[9px] text-destructive">Hook Line · 大字幕金句</p>
           <p className="font-script mt-0.5 text-sm font-medium">{clip.hookLine}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{clip.hookLineZh}</p>
         </div>
       </div>
     </div>
@@ -39,7 +42,7 @@ function PackView({ pack }: { pack: ConceptScriptPack }) {
     pack.episodes.map(formatScript).join("\n\n\n") +
     "\n\n\n===== 投流素材（完整单集 · 不连贯） =====\n\n" +
     pack.promoClips
-      .map((c) => `[EP${c.epNo} · ${c.positionHint}] ${c.premise}\n\n${formatScript(c.episode)}\n[HOOK LINE] ${c.hookLine}`)
+      .map((c) => `[EP${c.epNo} · ${c.positionHint}] ${c.premise}\n\n${formatScript(c.episode)}\n[HOOK LINE] ${c.hookLine} ｜ 【金句】${c.hookLineZh}`)
       .join("\n\n");
 
   const copy = async () => {

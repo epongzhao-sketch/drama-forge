@@ -103,28 +103,31 @@ export interface OutlineEpisode {
   paywall: boolean;
 }
 
-/** 剧本节拍 */
+/** 剧本节拍：中英双语（en = 拍摄稿英文，zh = 审阅稿中文） */
 export interface ScriptBeat {
   type: "action" | "dialogue";
   character?: string;
-  text: string;
+  en: string;
+  zh: string;
 }
 
 export interface ScriptScene {
   sceneNo: number;
-  location: string;
-  time: string;
+  location: string;   // 英文地点（INT. MANSION）
+  locationZh: string; // 中文地点（豪宅内）
+  time: string;       // 英文时间（NIGHT）
+  timeZh: string;     // 中文时间（夜）
   beats: ScriptBeat[];
 }
 
-/** 单集完整剧本 */
+/** 单集完整剧本（中英双语） */
 export interface EpisodeScript {
   epNo: number;
-  title: string;
+  title: string;      // 英文标题
+  titleZh: string;    // 中文标题
   scenes: ScriptScene[];
-  cliffhanger: string;
-  /** 移植桥段所在的场景号（成稿重点描写的素材段场景） */
-  transplantScenes?: number[];
+  cliffhanger: string;    // 英文
+  cliffhangerZh: string;  // 中文
 }
 
 /** 换皮方案（AI 一次产出 10 个，人工粗选 3~5 个进入剧本产出） */
@@ -154,8 +157,9 @@ export interface PromoClip {
   epNo: number;             // 该素材实际落在全剧的第几集（如 9、21），与连贯集的 1~5 不连续
   positionHint: string;     // 落点说明（如 "付费卡点前一集" / "大结局前的高潮"）
   premise: string;          // 情境前提：让没看过前情的观众秒懂这段戏
-  episode: EpisodeScript;   // 完整的一集剧本（多场景 + 结尾悬念）
-  hookLine: string;         // 可直接上大字幕的金句
+  episode: EpisodeScript;   // 完整的一集剧本（多场景 + 结尾悬念，中英双语）
+  hookLine: string;         // 可直接上大字幕的金句（英文）
+  hookLineZh: string;       // 金句中文
 }
 
 /** 一个入选换皮方案的完整产出包：3~5 集连贯剧本 + 2 集不连贯投流素材 */

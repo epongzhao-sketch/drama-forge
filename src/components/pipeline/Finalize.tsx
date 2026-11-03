@@ -89,6 +89,7 @@ export function Finalize({
               {activePack.promoClips.map((c) => (
                 <div key={c.id} className="border border-destructive/40 bg-destructive/5 px-4 py-4">
                   <p className="mono-label text-[9px] text-destructive">EP{c.epNo} · {c.positionHint}</p>
+                  <p className="mt-0.5 text-sm font-medium">{c.episode.title} <span className="text-muted-foreground font-normal">{c.episode.titleZh}</span></p>
                   <p className="mt-1 text-xs text-muted-foreground">{c.premise}</p>
                   <div className="mt-3 space-y-5">
                     {c.episode.scenes.map((sc) => <SceneBlock key={sc.sceneNo} sc={sc} highlight />)}
@@ -96,6 +97,7 @@ export function Finalize({
                   <div className="mt-3 border border-l-2 border-border border-l-destructive bg-card/60 px-3 py-2">
                     <p className="mono-label text-[9px] text-destructive">Cliffhanger · 本集悬念</p>
                     <p className="font-script mt-0.5 text-sm">{c.episode.cliffhanger}</p>
+                    <p className="mt-0.5 text-[13px] text-muted-foreground">{c.episode.cliffhangerZh}</p>
                   </div>
                 </div>
               ))}
