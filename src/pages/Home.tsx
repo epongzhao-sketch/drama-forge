@@ -33,21 +33,19 @@ type ProjectRow = {
   createdAt: Date;
   progress: {
     hasSample: boolean;
-    hasAnalysis: boolean;
-    hasBible: boolean;
-    outlineCount: number;
-    scriptCount: number;
+    selectedCount: number;
+    packCount: number;
+    finalId: string | null;
   };
 };
 
 function stageDone(p: ProjectRow["progress"], key: string): boolean {
   switch (key) {
     case "sample": return p.hasSample;
-    case "analysis": return p.hasAnalysis;
-    case "remap": return p.hasAnalysis;
-    case "bible": return p.hasBible;
-    case "outline": return p.outlineCount > 0;
-    case "script": return p.scriptCount > 0;
+    case "analysis": return p.hasSample;
+    case "remap": return p.selectedCount > 0;
+    case "pack": return p.packCount > 0;
+    case "final": return !!p.finalId;
     default: return false;
   }
 }
@@ -191,7 +189,7 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* 六段流水线进度 */}
+                {/* 五段流水线进度 */}
                 <div className="mt-5 flex gap-1">
                   {PIPELINE_STAGES.map((s) => (
                     <div
@@ -205,7 +203,7 @@ export default function Home() {
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <span className="mono-label text-[9px]">
-                    大纲 {p.progress.outlineCount} · 剧本 {p.progress.scriptCount}
+                    入选 {p.progress.selectedCount} 方案 · 剧本包 {p.progress.packCount}
                   </span>
                   <span className="mono-label flex items-center gap-1 text-[9px] text-primary opacity-0 transition-opacity group-hover:opacity-100">
                     进入工作台 <ArrowRight className="h-3 w-3" />

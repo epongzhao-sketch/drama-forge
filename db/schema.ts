@@ -70,7 +70,7 @@ export const analyses = mysqlTable("analyses", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-/** 换皮设定（1:1 项目） */
+/** 换皮方案池（1:1 项目）：10 个候选 + 粗选 + 定稿 */
 export const remaps = mysqlTable("remaps", {
   id: serial("id").primaryKey(),
   projectId: bigint("projectId", { mode: "number", unsigned: true })
@@ -82,6 +82,22 @@ export const remaps = mysqlTable("remaps", {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+/** 入选换皮方案的剧本产出包（每方案一行）：连贯集 + 不连贯投流素材 */
+export const scriptPacks = mysqlTable(
+  "script_packs",
+  {
+    id: serial("id").primaryKey(),
+    projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+    conceptId: varchar("conceptId", { length: 64 }).notNull(),
+    pack: json("pack").notNull(),
+    updatedAt: timestamp("updatedAt")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("script_packs_project_concept").on(t.projectId, t.conceptId)],
+);
 
 /** 总纲（1:1 项目） */
 export const bibles = mysqlTable("bibles", {
@@ -160,6 +176,7 @@ export type Project = typeof projects.$inferSelect;
 export type Sample = typeof samples.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
 export type Remap = typeof remaps.$inferSelect;
+export type ScriptPackRow = typeof scriptPacks.$inferSelect;
 export type Bible = typeof bibles.$inferSelect;
 export type Outline = typeof outlines.$inferSelect;
 export type Script = typeof scripts.$inferSelect;

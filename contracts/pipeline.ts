@@ -56,9 +56,9 @@ export const VERDICT_LABELS: Record<EvalVerdict, string> = {
   fail: "不通过",
 };
 
-/** 判档质检报告（三栏：阻挡项 / 优化项 / 体量与赛道） */
+/** 判档质检报告（包级：对一个入选方案的整套剧本产出做评估） */
 export interface EvalReport {
-  scope: "outline" | "script";
+  scope: "pack" | "outline" | "script";
   epNo?: number;
   verdict: EvalVerdict;
   grade?: string;
@@ -127,13 +127,51 @@ export interface EpisodeScript {
   transplantScenes?: number[];
 }
 
+/** 换皮方案（AI 一次产出 10 个，人工粗选 3~5 个进入剧本产出） */
+export interface RemapConcept {
+  id: string;
+  title: string;          // 新题材一句话（如 "狼人 Alpha 的契约新娘"）
+  genre: string;          // 题材/赛道
+  protagonist: string;    // 主角设定
+  setting: string;        // 时代/世界观背景
+  twist: string;          // 这个方案的核心差异化卖点（为什么这版能爆）
+  keepElements: string[]; // 沿用的爆款元素
+}
+
+/** 换皮方案池：10 个候选 + 人工粗选出的 3~5 个 id + 最终定稿 id */
+export interface RemapPool {
+  concepts: RemapConcept[];
+  selectedIds: string[];            // 粗选 3~5 个
+  finalId?: string;                 // 编审最终定稿 1 个
+  totalEpisodes: number;            // 新剧总集数（全局设定）
+  episodeSeconds: number;
+  notes?: string;                   // 补充要求
+}
+
+/** 一段不连贯的投流素材剧本（可发生在后面任意集，单独成段） */
+export interface PromoClip {
+  id: string;
+  positionHint: string;   // 建议落点（如 "第 8 集前后" / "大结局前"），不要求与连贯集衔接
+  premise: string;        // 这段戏的情境前提（让观众秒懂）
+  scene: ScriptScene;     // 单场高密度戏
+  hookLine: string;       // 可直接上大字幕的金句
+}
+
+/** 一个入选换皮方案的完整产出包：3~5 集连贯剧本 + 2 段不连贯投流素材 */
+export interface ConceptScriptPack {
+  conceptId: string;
+  logline: string;                 // 本方案一句话卖点
+  episodes: EpisodeScript[];       // 3~5 集连贯剧本（本身即可投流）
+  promoClips: PromoClip[];         // 2 段不连贯投流素材剧本原文
+  status: "pending" | "generating" | "done" | "error";
+}
+
 export const PIPELINE_STAGES = [
   { key: "sample", label: "样本录入", en: "SAMPLE" },
   { key: "analysis", label: "AI 拆解", en: "DECONSTRUCT" },
-  { key: "remap", label: "换皮设定", en: "REMAP" },
-  { key: "bible", label: "总纲", en: "BIBLE" },
-  { key: "outline", label: "分集大纲", en: "OUTLINE" },
-  { key: "script", label: "剧本工坊", en: "STUDIO" },
+  { key: "remap", label: "换皮方案", en: "REMAP" },
+  { key: "pack", label: "剧本产出", en: "PRODUCE" },
+  { key: "final", label: "编审定稿", en: "FINALIZE" },
 ] as const;
 
 export type PipelineStageKey = (typeof PIPELINE_STAGES)[number]["key"];

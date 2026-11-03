@@ -6,10 +6,9 @@ import { AppHeader, Led, ErrorBox } from "@/components/chrome";
 import { PIPELINE_STAGES, type PipelineStageKey } from "@contracts/pipeline";
 import { SampleEditor } from "@/components/pipeline/SampleEditor";
 import { AnalysisView } from "@/components/pipeline/AnalysisView";
-import { RemapForm } from "@/components/pipeline/RemapForm";
-import { BibleView } from "@/components/pipeline/BibleView";
-import { OutlineView } from "@/components/pipeline/OutlineView";
-import { ScriptStudio } from "@/components/pipeline/ScriptStudio";
+import { RemapConcepts } from "@/components/pipeline/RemapConcepts";
+import { ScriptPacks } from "@/components/pipeline/ScriptPacks";
+import { Finalize } from "@/components/pipeline/Finalize";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function Workspace() {
@@ -27,15 +26,14 @@ export default function Workspace() {
 
   const status = useMemo(() => {
     if (!data) return null;
-    const total = data.remap?.totalEpisodes ?? 60;
+    const pool = data.remapPool;
     return {
       hasSample: !!data.sample,
       hasAnalysis: !!data.analysis,
-      hasRemap: !!data.remap,
-      hasBible: !!data.bible,
-      outlineCount: data.outlines.length,
-      scriptCount: data.scripts.filter((s) => s.contentZh).length,
-      total,
+      hasRemap: !!pool && pool.concepts.length > 0,
+      selectedCount: pool?.selectedIds.length ?? 0,
+      packCount: data.packs.length,
+      hasFinal: !!pool?.finalId,
     };
   }, [data]);
 
@@ -44,10 +42,9 @@ export default function Workspace() {
     const doneMap: Record<PipelineStageKey, boolean> = {
       sample: status.hasSample,
       analysis: status.hasAnalysis,
-      remap: status.hasRemap,
-      bible: status.hasBible,
-      outline: status.outlineCount > 0,
-      script: status.scriptCount > 0,
+      remap: status.hasRemap && status.selectedCount > 0,
+      pack: status.packCount > 0,
+      final: status.hasFinal,
     };
     if (key === stage) return "active";
     return doneMap[key] ? "done" : "idle";
@@ -133,9 +130,9 @@ export default function Workspace() {
             <div className="hidden px-5 pb-6 lg:block">
               <p className="mono-label text-[10px]">Progress</p>
               <div className="mt-2 space-y-1.5 text-xs text-muted-foreground">
-                <p className="flex justify-between"><span>分集大纲</span><span className="font-mono2 text-foreground/80">{status.outlineCount}/{status.total}</span></p>
-                <p className="flex justify-between"><span>中文剧本</span><span className="font-mono2 text-foreground/80">{status.scriptCount}/{status.total}</span></p>
-                <p className="flex justify-between"><span>英文剧本</span><span className="font-mono2 text-foreground/80">{data.scripts.filter((s) => s.contentEn).length}/{status.total}</span></p>
+                <p className="flex justify-between"><span>入选方案</span><span className="font-mono2 text-foreground/80">{status.selectedCount}</span></p>
+                <p className="flex justify-between"><span>剧本包</span><span className="font-mono2 text-foreground/80">{status.packCount}/{status.selectedCount}</span></p>
+                <p className="flex justify-between"><span>已定稿</span><span className="font-mono2 text-foreground/80">{status.hasFinal ? "1" : "0"}</span></p>
               </div>
             </div>
           </aside>
@@ -145,7 +142,7 @@ export default function Workspace() {
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <p className="mono-label text-[10px] text-primary">
-                  Stage {String(stageIndex + 1).padStart(2, "0")} / 06 · {PIPELINE_STAGES[stageIndex].en}
+                  Stage {String(stageIndex + 1).padStart(2, "0")} / 05 · {PIPELINE_STAGES[stageIndex].en}
                 </p>
                 <h2 className="mt-1 text-xl font-bold md:text-2xl">{PIPELINE_STAGES[stageIndex].label}</h2>
               </div>
@@ -181,48 +178,27 @@ export default function Workspace() {
               />
             )}
             {stage === "remap" && (
-              <RemapForm
+              <RemapConcepts
                 projectId={projectId}
                 analysis={data.analysis}
-                remap={data.remap}
-                hasBible={status.hasBible}
+                pool={data.remapPool}
                 onSaved={refresh}
-                onBible={() => {
-                  refresh();
-                  setStage("bible");
-                }}
               />
             )}
-            {stage === "bible" && (
-              <BibleView
+            {stage === "pack" && (
+              <ScriptPacks
                 projectId={projectId}
-                bible={data.bible}
-                ready={status.hasAnalysis && status.hasRemap}
+                pool={data.remapPool}
+                packs={data.packs}
                 onDone={refresh}
               />
             )}
-            {stage === "outline" && (
-              <OutlineView
+            {stage === "final" && (
+              <Finalize
                 projectId={projectId}
-                outlines={data.outlines}
-                totalEpisodes={status.total}
-                ready={status.hasBible}
-                canTransplant={(data.sample?.redSegments.length ?? 0) > 0}
-                transplants={data.transplants}
-                outlineEval={data.evaluations.find((e) => e.scope === "outline")?.report ?? null}
-                onDone={refresh}
-              />
-            )}
-            {stage === "script" && (
-              <ScriptStudio
-                projectId={projectId}
-                outlines={data.outlines}
-                scripts={data.scripts}
-                totalEpisodes={status.total}
-                transplants={data.transplants}
-                scriptEvals={data.evaluations
-                  .filter((e) => e.scope === "script")
-                  .map((e) => ({ epNo: e.epNo, report: e.report }))}
+                pool={data.remapPool}
+                packs={data.packs}
+                packEval={data.evaluations.find((e) => e.scope === "pack")?.report ?? null}
                 onDone={refresh}
               />
             )}
@@ -261,20 +237,25 @@ export default function Workspace() {
                   </p>
                 </div>
               )}
-              {data.remap && (
+              {data.remapPool && data.remapPool.concepts.length > 0 && (
                 <div className="border border-border bg-card/60 px-3.5 py-3">
-                  <p className="mono-label text-[9px]">换皮设定</p>
-                  <p className="mt-1.5 text-xs font-medium">{data.remap.newGenre}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {data.remap.totalEpisodes} 集 × {data.remap.episodeSeconds}s · {data.remap.setting}
+                  <p className="mono-label text-[9px]">换皮方案</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {data.remapPool.concepts.length} 个候选 · 已选 {data.remapPool.selectedIds.length} 个
                   </p>
-                </div>
-              )}
-              {data.bible && (
-                <div className="border border-primary/30 bg-primary/5 px-3.5 py-3">
-                  <p className="mono-label text-[9px] text-primary">新剧</p>
-                  <p className="mt-1.5 text-sm font-semibold">{data.bible.titleZh}</p>
-                  <p className="font-mono2 mt-0.5 text-[10px] text-muted-foreground">{data.bible.titleEn}</p>
+                  {data.remapPool.selectedIds.length > 0 && (
+                    <div className="mt-1.5 space-y-1">
+                      {data.remapPool.selectedIds.map((id) => {
+                        const c = data.remapPool!.concepts.find((x) => x.id === id);
+                        const isFinal = data.remapPool!.finalId === id;
+                        return (
+                          <p key={id} className={`truncate text-[11px] ${isFinal ? "text-[hsl(var(--mint))] font-medium" : "text-foreground/75"}`}>
+                            {isFinal ? "★ " : ""}{c?.title ?? id}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
