@@ -134,10 +134,12 @@ export interface EpisodeScript {
 export interface RemapConcept {
   id: string;
   title: string;          // 新题材一句话（如 "狼人 Alpha 的契约新娘"）
-  genre: string;          // 题材/赛道
+  genre: string;          // 题材/赛道（元素外皮，如 黑手党 / 狼人 / 霸总 / 王室）
+  keptExpectation: string; // 锁定不变的核心期待（与拆解报告同义等价，只换表述语境）
   protagonist: string;    // 主角设定
   setting: string;        // 时代/世界观背景
-  twist: string;          // 这个方案的核心差异化卖点（为什么这版能爆）
+  twist: string;          // 这层新外皮为什么更炸（差异化卖点，不许改写核心期待）
+  swappedElements: string[]; // 本方案更换掉的元素外皮清单（如 都市豪门 → 狼人族群）
   keepElements: string[]; // 沿用的爆款元素
 }
 

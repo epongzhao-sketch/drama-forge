@@ -60,11 +60,19 @@ const analysisSchema = z.object({
 const conceptSchema = z.object({
   id: z.string(),
   title: z.string(),
-  genre: z.string(),
+  genre: z.string().describe("题材/赛道——这只是元素外皮，如 黑手党 / 狼人 / 吸血鬼 / 霸总 / 王室 / 体育"),
+  keptExpectation: z
+    .string()
+    .describe("锁定不变的核心期待：必须与拆解报告的核心期待同义等价，只允许用新题材的语境重新表述，禁止改方向"),
   protagonist: z.string(),
   setting: z.string(),
-  twist: z.string().describe("本方案的核心差异化卖点——为什么这版能爆"),
-  keepElements: z.array(z.string()),
+  twist: z
+    .string()
+    .describe("这层新元素外皮为什么让同一个核心期待更炸——是外皮差异化卖点，不是新核心期待"),
+  swappedElements: z
+    .array(z.string())
+    .describe("本方案换掉的元素外皮清单，格式「原元素 → 新元素」，如「都市豪门 → 黑手党家族」"),
+  keepElements: z.array(z.string()).describe("原样沿用的爆款元素/桥段"),
 });
 
 
@@ -401,18 +409,31 @@ export const pipelineRouter = createRouter({
           model: await getModel(),
           schema: z.object({ concepts: z.array(conceptSchema).length(10) }),
           prompt: [
-            "你是资深海外竖屏短剧策划。基于一份爆款短剧的拆解报告，产出 **10 个完全不同的「换皮」复刻方案**。",
-            "每个方案都要：保留爆款的核心期待与被验证有效的元素，但题材、人设、世界观彻底换新，且 10 个方案之间必须覆盖差异足够大的赛道（不要都是同一类）。",
+            "你是资深海外竖屏短剧策划。基于一份爆款短剧的拆解报告，产出 **10 个「换皮」复刻方案**。",
             "",
-            "每个方案必须写清 twist——它凭什么能爆（差异化卖点），而不是泛泛说「很爽」。",
+            "【最高纪律：换皮 = 只换元素外皮，核心期待锁死不动】",
+            "- 核心期待（keptExpectation）= 观众追下去、愿意付费的那个情绪承诺与关系结构，例如「先婚后爱」「隐藏身份复仇打脸」「契约关系变真爱」。它是本剧的地基，10 个方案必须与拆解报告的核心期待**同义等价**——一个字的方向都不能改。",
+            "- 元素外皮 = 题材赛道与人设包装：黑手党、狼人、吸血鬼、霸总、王室、体育明星、校园、年代、牛仔、海盗……以及职业、场景、时代、道具、视觉噱头。**只有这些允许换**。「黑手党/狼人/霸总」这类是元素；「先婚后爱/复仇/逆袭」这类核心期待不是元素，永远不换。",
+            "- 举例：原剧核心期待是「先婚后爱 + 隐藏身份复仇」，那么狼人版就是「狼人 Alpha 的契约婚姻 → 先婚后爱，女主隐藏真实身份复仇」——期待原样保留，只是承载它的皮换成了狼人族群。",
+            "",
+            "【10 个方案的差异从何而来】",
+            "10 个方案之间拼的是「元素外皮赛道」的差异（黑手党 vs 狼人 vs 霸总 vs 王室 vs 体育 vs 吸血鬼 vs 年代庄园……），绝不是核心期待的差异。每个方案的 keptExpectation 复述同一份核心期待（允许用新题材语境表述），genre/setting/protagonist/swappedElements 体现外皮差异。",
+            "",
+            "【每个方案必须写清】",
+            "- keptExpectation：锁定的核心期待（与拆解报告同义等价）。",
+            "- twist：这层新外皮为什么让**同一个期待**更炸（如「黑手党语境让'隐藏身份亮底牌'的打脸更致命」），不许写成新的期待。",
+            "- swappedElements：换了哪些元素外皮（原元素 → 新元素）。",
+            "- keepElements：原样沿用的爆款元素/桥段。",
             "",
             LOCALIZATION_RULES,
             "（10 个方案的主角名、背景、冲突筹码都必须落在欧美语境，禁止任何中式设定。）",
             "",
             "===== 爆款拆解报告 =====",
             `剧型赛道：${a.dramaType}`,
-            `核心期待：${a.coreExpectation}`,
+            `核心期待（所有方案必须锁定它，禁止改写方向）：${a.coreExpectation}`,
+            `拆解出的元素清单（这些才是可换的皮）：${a.elements.join("、")}`,
             `可迁移爆款元素：${a.transferableElements.join("、")}`,
+            `红标段爆款原因：${a.redSegmentTraits.map((r) => r.trait).join("；")}`,
             `钩子节奏：${a.hookRhythm}`,
             `付费卡点规律：${a.paywallPattern}`,
             `目标市场适配：${a.marketFit}`,
@@ -480,6 +501,7 @@ export const pipelineRouter = createRouter({
             "2. promoClips：**恰好 2 集不连贯的投流素材**。它们各自是一集**完整的剧本**（2-4 个场景 + 结尾悬念），但集号不与前面连贯集衔接——因为投流素材常取自全剧最炸的段落，不一定在开头。每集要标出它实际落在全剧第几集（epNo，比如 9、21，需大于连贯集的最大集号且不超过总集数），并给一句 premise 让没看过前情的观众秒懂这段戏。",
             "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢；关键信息用可视物证呈现；狠话改当下动作。",
             "4. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
+            "5. 【核心期待锁死】全剧主线必须兑现方案里锁定的核心期待（keptExpectation）——只换元素外皮，关系结构与情绪承诺（如先婚后爱/复仇打脸/身份错位）一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
             "",
             "【语言：中英双语】剧本包全程双语输出——",
             "- 英文（en/title/location/time/cliffhanger/hookLine）= 拍摄稿，用地道美式英文（场景头 'INT. MANSION — NIGHT' 格式），可直接投给欧美演员；",
@@ -491,10 +513,12 @@ export const pipelineRouter = createRouter({
             "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文部分严禁任何中式表达。）",
             "",
             "===== 换皮方案 =====",
-            `题材：${concept.genre}`,
+            `题材外皮：${concept.genre}`,
+            `锁定核心期待（全剧必须兑现，禁止改写）：${concept.keptExpectation}`,
             `主角：${concept.protagonist}`,
             `背景：${concept.setting}`,
-            `差异化卖点：${concept.twist}`,
+            `外皮差异化卖点：${concept.twist}`,
+            `更换的元素外皮：${(concept.swappedElements ?? []).join("、") || "（无）"}`,
             `沿用爆款元素：${concept.keepElements.join("、") || "（无）"}`,
             `新剧总集数：${pool.totalEpisodes}，单集约 ${pool.episodeSeconds} 秒`,
             "",
@@ -561,6 +585,8 @@ export const pipelineRouter = createRouter({
       }
       const pack = packRow.pack as ConceptScriptPack;
       const a = analysis ? (analysis.result as AnalysisResult) : null;
+      const pool = await loadRemapPool(input.projectId);
+      const concept = pool?.concepts.find((c) => c.id === input.conceptId);
       try {
         const { object } = await generateObject({
           model: await getModel(),
@@ -576,6 +602,8 @@ export const pipelineRouter = createRouter({
             "（质检时若发现中式人名/称谓/制度/场景，计入阻挡项，要求改成欧美对应物。）",
             "",
             a?.coreExpectation ? `原爆款核心期待参考：${a.coreExpectation}` : "",
+            concept?.keptExpectation ? `方案锁定的核心期待（剧本必须兑现它）：${concept.keptExpectation}` : "",
+            "【换皮质检红线】若发现剧本把核心期待改写/漂移了（而不是只换元素外皮——黑手党/狼人/霸总这类题材包装可以换，先婚后爱/复仇打脸/身份错位这类期待结构不能换），计为阻挡项，明确指出漂移点并要求改回锁定期待。",
             "",
             `===== 剧本包（${pack.episodes.length} 集连贯 + ${pack.promoClips.length} 段投流素材） =====`,
             JSON.stringify({ logline: pack.logline, episodes: pack.episodes, promoClips: pack.promoClips }, null, 2),

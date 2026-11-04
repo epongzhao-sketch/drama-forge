@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorBox, Generating } from "@/components/chrome";
-import { Sparkles, CheckCircle2, Circle } from "lucide-react";
+import { Sparkles, CheckCircle2, Circle, Lock, RefreshCw } from "lucide-react";
 
 export function RemapConcepts({
   projectId,
@@ -69,7 +69,7 @@ export function RemapConcepts({
           </Button>
           {!analysis && <p className="mt-2 text-xs text-muted-foreground">需要先完成 AI 拆解。</p>}
         </div>
-        {genMut.isPending && <Generating text="正在基于爆款基因产出 10 个差异化换皮方案…" />}
+        {genMut.isPending && <Generating text="锁定核心期待，正在为同一期待换 10 种元素外皮…" />}
         {genMut.error && <ErrorBox message={genMut.error.message} />}
       </section>
 
@@ -78,7 +78,7 @@ export function RemapConcepts({
         <section>
           <div className="mb-3 flex items-center justify-between">
             <p className="mono-label text-[10px]">
-              Concepts · 10 个候选方案 —— 勾选 3~5 个进入剧本产出（已选 {picked.size}）
+              Concepts · 10 个候选方案 —— 核心期待全部锁定，只是元素外皮不同；勾选 3~5 个进入剧本产出（已选 {picked.size}）
             </p>
             <Button size="sm" variant="secondary" disabled={!canConfirm || selMut.isPending}
               onClick={() => selMut.mutate({ projectId, selectedIds: [...picked] })}>
@@ -102,9 +102,27 @@ export function RemapConcepts({
                       : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </div>
                   <p className="mono-label text-[9px] text-muted-foreground">{c.genre}</p>
+                  {c.keptExpectation && (
+                    <div className="rounded border border-[hsl(var(--mint))]/40 bg-[hsl(var(--mint))]/10 px-2 py-1.5">
+                      <p className="mono-label flex items-center gap-1 text-[9px] text-[hsl(var(--mint))]">
+                        <Lock className="h-3 w-3" /> 锁定核心期待 · Locked Core
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-foreground/85">{c.keptExpectation}</p>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground"><span className="text-foreground/70">主角：</span>{c.protagonist}</p>
                   <p className="text-xs text-muted-foreground"><span className="text-foreground/70">背景：</span>{c.setting}</p>
                   <p className="border-l-2 border-primary/50 pl-2 text-xs leading-relaxed text-foreground/85">{c.twist}</p>
+                  {(c.swappedElements?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <RefreshCw className="h-3 w-3 text-muted-foreground" />
+                      {c.swappedElements!.map((s) => (
+                        <span key={s} className="mono-label border border-border bg-muted/40 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {selected && (
                     <span className="mono-label self-start border border-[hsl(var(--mint))]/50 bg-[hsl(var(--mint))]/10 px-1.5 py-0.5 text-[9px] text-[hsl(var(--mint))]">
                       已入选
