@@ -1,5 +1,4 @@
 import { useAuth } from "@/hooks/useAuth";
-import { trpc } from "@/providers/trpc";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -7,8 +6,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Clapperboard, Wallet } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { LogOut, Clapperboard } from "lucide-react";
+import { Link } from "react-router";
 
 export function Led({ tone, pulse }: { tone?: "amber" | "mint" | "red"; pulse?: boolean }) {
   const cls = tone === "amber" ? "led-amber" : tone === "mint" ? "led-mint" : tone === "red" ? "led-red" : "";
@@ -32,8 +31,6 @@ export function Logo() {
 
 export function AppHeader({ right }: { right?: React.ReactNode }) {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const { data: wallet } = trpc.wallet.status.useQuery(undefined, { enabled: !!user });
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-4 px-4 md:px-6">
@@ -60,15 +57,6 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
                 <p className="text-sm font-medium truncate">{user.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
-              <DropdownMenuItem onClick={() => navigate("/settings")} className="cursor-pointer">
-                <Wallet className="mr-2 h-4 w-4" />
-                账号与用量
-                {wallet && (
-                  <span className="ml-auto mono-label text-[9px] text-muted-foreground">
-                    {wallet.balance.toLocaleString()} 点
-                  </span>
-                )}
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
                 退出登录
