@@ -29,13 +29,20 @@ export interface ParsedScript {
   segments: RedSegment[];
 }
 
-/** 合并相邻（首尾相接）的红标段，减少清单噪音 */
-function mergeAdjacent(segments: RedSegment[]): RedSegment[] {
+/**
+ * 合并相邻红标段，减少清单噪音：
+ * 两段红标之间若只隔着空白（空格/换行——通常只是段落断行），视为同一段连续红标素材合并。
+ */
+function mergeAdjacent(segments: RedSegment[], text: string): RedSegment[] {
   const out: RedSegment[] = [];
   for (const s of segments) {
     const last = out[out.length - 1];
-    if (last && last.end === s.start) last.end = s.end;
-    else out.push({ ...s });
+    const gap = last ? text.slice(last.end, s.start) : null;
+    if (last && (last.end === s.start || (gap !== null && gap.trim() === ""))) {
+      last.end = s.end;
+    } else {
+      out.push({ ...s });
+    }
   }
   return out;
 }
@@ -73,7 +80,7 @@ export function parsePastedHtml(html: string): ParsedScript | null {
   text = text.replace(/\n{3,}/g, "\n\n").trim();
   const valid = segments.filter((s) => s.end > s.start && s.end <= text.length);
   if (!text || valid.length === 0) return null;
-  return { text, segments: mergeAdjacent(valid) };
+  return { text, segments: mergeAdjacent(valid, text) };
 }
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -167,7 +174,7 @@ export async function parseDocx(buf: ArrayBuffer): Promise<ParsedScript> {
 
   text = text.replace(/\n{3,}/g, "\n\n").trim();
   if (!text) throw new Error("文件里没有可提取的文字");
-  const valid = mergeAdjacent(segments.filter((s) => s.end > s.start && s.end <= text.length));
+  const valid = mergeAdjacent(segments.filter((s) => s.end > s.start && s.end <= text.length), text);
   return { text, segments: valid };
 }
 

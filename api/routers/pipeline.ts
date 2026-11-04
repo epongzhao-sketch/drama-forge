@@ -307,7 +307,7 @@ export const pipelineRouter = createRouter({
       z.object({
         projectId: z.number(),
         content: z.string().min(10).max(200000),
-        redSegments: z.array(redSegmentSchema).max(200),
+        redSegments: z.array(redSegmentSchema).max(1000),
         sourceFile: z
           .object({
             name: z.string().max(255),
@@ -488,6 +488,7 @@ export const pipelineRouter = createRouter({
       const segs = sample ? ((sample.redSegments ?? []) as RedSegment[]) : [];
       const redTexts = segs
         .filter((s) => s.end > s.start && s.end <= (sample?.content.length ?? 0))
+        .slice(0, 40) // 防极端多段撑爆 prompt（合并后正常剧本远少于此数）
         .map((s) => sample!.content.slice(s.start, s.end).slice(0, 500));
       try {
         const { object } = await generateObject({
