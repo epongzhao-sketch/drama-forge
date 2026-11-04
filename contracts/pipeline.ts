@@ -103,31 +103,66 @@ export interface OutlineEpisode {
   paywall: boolean;
 }
 
-/** 剧本节拍：中英双语（en = 拍摄稿英文，zh = 审阅稿中文） */
-export interface ScriptBeat {
-  type: "action" | "dialogue";
-  character?: string;
-  en: string;
-  zh: string;
+/** 方向卡：入选方案的世界观设定（随剧本包产出，对标行业「方向卡」） */
+export interface DirectionCard {
+  expectation: string;    // 核心期待（与方案锁定期待同义，新题材语境展开）
+  elements: string[];     // 元素清单（如 王室贵族/马甲掉马/萌宝/专业垂类）
+  enduranceCost: string;  // 忍的代价（写死）：她不能直接亮身份的具体机制
+  clock?: string;         // 时钟/倒计时（如 全剧倒计时60天），可无
+  mastermind?: string;    // 真正的幕后反派及其盘算，可无
+  breakingPoint: string;  // 「不得不破戒」的触发点
+  powerMap: string;       // 强弱格局：女主真实/表面地位、男主、渣夫、反派相对位置
 }
 
+/** 人物小传 */
+export interface CharacterBio {
+  name: string;           // 英文名
+  nameZh: string;         // 中文名（剧本台词标签用它）
+  role: string;           // 定位：女主/男主/女主之子/反派/幕后反派…
+  age?: string;
+  realIdentity?: string;  // 真实身份
+  coverIdentity?: string; // 表面身份
+  backstory?: string;     // 前史
+  personality: string;    // 性格
+  desire?: string;        // 欲望
+  weakness?: string;      // 弱点
+  weapon?: string;        // 不暴露身份时的武器 / 筹码
+  arc?: string;           // 弧光
+  powerPosition?: string; // 强弱定位
+  villainCheck?: string;  // 反派三查（持续动机/不蠢/量级，仅反派）
+}
+
+/**
+ * 剧本节拍：中文短剧工作稿格式
+ * action   = ▲ 动作行（zh 中文描述，可视化）
+ * dialogue = 角色(mood): "en"（zh 中文翻译）
+ * caption  = 【字幕: en】（zh）
+ * note     = 【zh】（如 闪切 / 特效: 黑场）
+ */
+export interface ScriptBeat {
+  type: "action" | "dialogue" | "caption" | "note";
+  character?: string;  // dialogue：角色中文名
+  mood?: string;       // dialogue：情绪/状态提示（压低声音，郑重）
+  en?: string;         // dialogue/caption 的英文（地道美式）
+  zh: string;          // action=动作行；dialogue=台词中文；caption=字幕中文；note=说明
+}
+
+/** 场景：场景头四要素 = 「集-场  日/夜  内/外  地点」+ 出场人物 */
 export interface ScriptScene {
   sceneNo: number;
-  location: string;   // 英文地点（INT. MANSION）
-  locationZh: string; // 中文地点（豪宅内）
-  time: string;       // 英文时间（NIGHT）
-  timeZh: string;     // 中文时间（夜）
+  timeOfDay: string;   // 日 / 夜 / 傍晚 / 晨
+  intExt: string;      // 内 / 外 / 内外
+  location: string;    // 中文地点（可含英文专名），如 米德尔堡猎狐与小马俱乐部·练习场
+  cast: string[];      // 出场人物（中文名）
   beats: ScriptBeat[];
 }
 
-/** 单集完整剧本（中英双语） */
+/** 单集完整剧本（中文工作稿 + 双语台词） */
 export interface EpisodeScript {
   epNo: number;
-  title: string;      // 英文标题
-  titleZh: string;    // 中文标题
+  title: string;      // 英文暂名
+  titleZh: string;    // 中文暂名
   scenes: ScriptScene[];
-  cliffhanger: string;    // 英文
-  cliffhangerZh: string;  // 中文
 }
 
 /** 换皮方案（AI 一次产出 10 个，人工粗选 3~5 个进入剧本产出） */
@@ -156,18 +191,21 @@ export interface RemapPool {
 /** 一段不连贯的投流素材：一集完整剧本，只是集号不与连贯集衔接（可发生在后面任意集） */
 export interface PromoClip {
   id: string;
+  promoName: string;      // 投流素材名，如「A 终极掉马·王储宣言」——字母编号+短语概括卖点
   epNo: number;             // 该素材实际落在全剧的第几集（如 9、21），与连贯集的 1~5 不连续
   positionHint: string;     // 落点说明（如 "付费卡点前一集" / "大结局前的高潮"）
   premise: string;          // 情境前提：让没看过前情的观众秒懂这段戏
-  episode: EpisodeScript;   // 完整的一集剧本（多场景 + 结尾悬念，中英双语）
+  episode: EpisodeScript;   // 完整的一集剧本（多场景 + 结尾黑场悬念）
   hookLine: string;         // 可直接上大字幕的金句（英文）
   hookLineZh: string;       // 金句中文
 }
 
-/** 一个入选换皮方案的完整产出包：3~5 集连贯剧本 + 2 集不连贯投流素材 */
+/** 一个入选换皮方案的完整产出包：方向卡 + 人物小传 + 3~5 集连贯剧本 + 2 集不连贯投流素材 */
 export interface ConceptScriptPack {
   conceptId: string;
   logline: string;                 // 本方案一句话卖点
+  directionCard: DirectionCard;    // 方向卡
+  characters: CharacterBio[];      // 人物小传
   episodes: EpisodeScript[];       // 3~5 集连贯剧本（本身即可投流）
   promoClips: PromoClip[];         // 2 集不连贯投流素材（完整单集剧本）
   status: "pending" | "generating" | "done" | "error";

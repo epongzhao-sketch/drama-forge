@@ -76,43 +76,85 @@ const conceptSchema = z.object({
 });
 
 
+const scriptBeatSchema = z.object({
+  type: z
+    .enum(["action", "dialogue", "caption", "note"])
+    .describe("action=▲动作行；dialogue=台词；caption=【字幕】；note=【闪切/特效:黑场】等"),
+  character: z.string().optional().describe("dialogue 专用：角色中文名"),
+  mood: z.string().optional().describe("dialogue 专用：情绪/状态提示，如 压低声音，郑重"),
+  en: z.string().optional().describe("dialogue/caption 专用：地道美式英文原文"),
+  zh: z.string().describe("action=动作行中文；dialogue=台词中文翻译；caption=字幕中文；note=说明文字"),
+});
+
 const scriptSceneSchema = z.object({
   sceneNo: z.number().int(),
-  location: z.string().describe("英文地点，如 INT. MANSION"),
-  locationZh: z.string().describe("中文地点，如 豪宅内"),
-  time: z.string().describe("英文时间，如 NIGHT"),
-  timeZh: z.string().describe("中文时间，如 夜"),
-  beats: z.array(
-    z.object({
-      type: z.enum(["action", "dialogue"]),
-      character: z.string().optional(),
-      en: z.string().describe("拍摄稿：地道美式英文台词/动作"),
-      zh: z.string().describe("审阅稿：对应的中文翻译"),
-    }),
-  ),
+  timeOfDay: z.string().describe("日 / 夜 / 傍晚 / 晨"),
+  intExt: z.string().describe("内 / 外 / 内外"),
+  location: z.string().describe("中文地点（可含英文专名），如 米德尔堡猎狐与小马俱乐部·练习场"),
+  cast: z.array(z.string()).describe("出场人物（中文名）"),
+  beats: z.array(scriptBeatSchema),
 });
 
 const episodeScriptSchema = z.object({
   epNo: z.number().int(),
-  title: z.string().describe("英文标题"),
-  titleZh: z.string().describe("中文标题"),
+  title: z.string().describe("英文暂名"),
+  titleZh: z.string().describe("中文暂名"),
   scenes: z.array(scriptSceneSchema),
-  cliffhanger: z.string().describe("本集结尾悬念（英文，下集钩子）"),
-  cliffhangerZh: z.string().describe("结尾悬念中文"),
+});
+
+const directionCardSchema = z.object({
+  expectation: z.string().describe("核心期待：与方案锁定期待同义等价，用新题材语境展开成一句「观众在等的事」"),
+  elements: z.array(z.string()).describe("元素清单，如 王室贵族/马甲掉马/下位者伪装/萌宝/专业垂类/霸总"),
+  enduranceCost: z
+    .string()
+    .describe("忍的代价（写死）：她为什么不能直接亮身份——具体的规则/法律/威胁机制，要硬、要能写死"),
+  clock: z.string().optional().describe("时钟/倒计时（如 全剧倒计时60天，每集角落一个数字）；天然没有就不填"),
+  mastermind: z.string().optional().describe("真正的幕后反派及其盘算（如有）"),
+  breakingPoint: z.string().describe("「不得不破戒」的触发点：什么事件会迫使她亮出身份"),
+  powerMap: z
+    .string()
+    .describe("强弱格局：女主真实地位vs表面地位、男主、渣夫、反派的相对强弱——男主护短但弱于女主，最后一击永远女主亲自完成"),
+});
+
+const characterBioSchema = z.object({
+  name: z.string().describe("英文名"),
+  nameZh: z.string().describe("中文名（剧本台词标签用它）"),
+  role: z.string().describe("定位：女主/男主/女主之子/渣夫/反派/幕后反派/盟友…"),
+  age: z.string().optional(),
+  realIdentity: z.string().optional().describe("真实身份"),
+  coverIdentity: z.string().optional().describe("表面身份"),
+  backstory: z.string().optional().describe("前史"),
+  personality: z.string().describe("性格"),
+  desire: z.string().optional().describe("欲望"),
+  weakness: z.string().optional().describe("弱点"),
+  weapon: z.string().optional().describe("不暴露身份时的武器 / 筹码"),
+  arc: z.string().optional().describe("弧光：从…到…"),
+  powerPosition: z.string().optional().describe("强弱定位"),
+  villainCheck: z.string().optional().describe("反派三查：持续动机 / 不蠢（程序合法）/ 量级（背后的靠山）——仅反派填"),
+});
+
+/** 第一步：剧本包地基 = logline + 方向卡 + 人物小传 */
+const packFoundationSchema = z.object({
+  logline: z.string().describe("本方案一句话卖点（中文）"),
+  directionCard: directionCardSchema,
+  characters: z.array(characterBioSchema).min(5).max(12),
 });
 
 const promoClipSchema = z.object({
   id: z.string(),
+  promoName: z
+    .string()
+    .describe("投流素材名：字母编号+短语概括卖点，如「A 终极掉马·王储宣言」「B 当众离婚·反求婚」"),
   epNo: z.number().int().describe("该素材实际落在全剧的第几集（如 9、21），与连贯集的 1~5 不连续"),
   positionHint: z.string().describe("落点说明，如 '付费卡点前一集' / '大结局前的高潮'"),
   premise: z.string().describe("情境前提，让没看过前情的观众秒懂这段戏"),
-  episode: episodeScriptSchema.describe("完整的一集剧本（多场景 + 结尾悬念，中英双语）"),
+  episode: episodeScriptSchema.describe("完整的一集剧本（多场景 + 结尾黑场悬念）"),
   hookLine: z.string().describe("可直接上大字幕的金句（英文）"),
   hookLineZh: z.string().describe("金句中文"),
 });
 
-const conceptPackSchema = z.object({
-  logline: z.string().describe("本方案一句话卖点"),
+/** 第二步：剧本正文 = 连贯集 + 投流素材 */
+const conceptPackScriptSchema = z.object({
   episodes: z.array(episodeScriptSchema).min(3).max(5).describe("3~5 集连贯剧本，本身即可投流"),
   promoClips: z.array(promoClipSchema).length(2).describe("2 集不连贯的投流素材（完整单集剧本）"),
 });
@@ -353,6 +395,7 @@ export const pipelineRouter = createRouter({
       try {
         const { object } = await generateObject({
           model: await getModel(),
+          maxRetries: 3,
           schema: analysisSchema,
           prompt: [
             "你是资深海外竖屏短剧（ReelShort / DramaBox 类）爆款内容分析师。",
@@ -407,6 +450,7 @@ export const pipelineRouter = createRouter({
       try {
         const { object } = await generateObject({
           model: await getModel(),
+          maxRetries: 3,
           schema: z.object({ concepts: z.array(conceptSchema).length(10) }),
           prompt: [
             "你是资深海外竖屏短剧策划。基于一份爆款短剧的拆解报告，产出 **10 个「换皮」复刻方案**。",
@@ -471,7 +515,7 @@ export const pipelineRouter = createRouter({
       return pool;
     }),
 
-  /** 为一个入选方案生成完整剧本包：3~5 集连贯剧本 + 2 段不连贯投流素材 */
+  /** 为一个入选方案生成完整剧本包：方向卡 + 人物小传 + 3~5 集连贯剧本 + 2 段不连贯投流素材 */
   generateScriptPack: authedQuery
     .input(z.object({ projectId: z.number(), conceptId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -490,50 +534,108 @@ export const pipelineRouter = createRouter({
         .filter((s) => s.end > s.start && s.end <= (sample?.content.length ?? 0))
         .slice(0, 40) // 防极端多段撑爆 prompt（合并后正常剧本远少于此数）
         .map((s) => sample!.content.slice(s.start, s.end).slice(0, 500));
+
+      const conceptBlock = [
+        "===== 换皮方案 =====",
+        `题材外皮：${concept.genre}`,
+        `锁定核心期待（全剧必须兑现，禁止改写）：${concept.keptExpectation}`,
+        `主角：${concept.protagonist}`,
+        `背景：${concept.setting}`,
+        `外皮差异化卖点：${concept.twist}`,
+        `更换的元素外皮：${(concept.swappedElements ?? []).join("、") || "（无）"}`,
+        `沿用爆款元素：${concept.keepElements.join("、") || "（无）"}`,
+        `新剧总集数：${pool.totalEpisodes}，单集约 ${pool.episodeSeconds} 秒`,
+      ].join("\n");
+      const analysisBlock = a
+        ? `===== 爆款核心期待（全剧主线服务于此） =====\n${a.coreExpectation}\n\n钩子节奏参考：${a.hookRhythm}\n付费卡点规律：${a.paywallPattern}`
+        : "";
+      const redBlock = redTexts.length
+        ? `===== 已验证的投流爆款素材段（供情绪结构参考，勿照抄） =====\n${redTexts.map((t, i) => `【素材${i + 1}】${t}`).join("\n\n")}`
+        : "";
+
       try {
-        const { object } = await generateObject({
+        // 第一步：方向卡 + 人物小传（剧本的世界观地基）
+        const foundation = await generateObject({
           model: await getModel(),
-          schema: conceptPackSchema,
+          maxRetries: 3,
+          schema: packFoundationSchema,
           prompt: [
-            "你是资深海外竖屏短剧总编剧。基于一个换皮方案，产出可直接投流测试的剧本包。",
+            "你是资深海外竖屏短剧总策划。为一个换皮方案产出剧本的地基：**方向卡 + 人物小传**。",
+            "",
+            "【方向卡要求】",
+            "- expectation：核心期待必须与方案锁定期待同义等价——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。",
+            "- enduranceCost（忍的代价）必须**写死**：一条具体的规则/法律/威胁机制，让观众明白「她为什么不能直接亮身份」。越硬越好（如继承法条款、信托条款、孩子的安全威胁）。",
+            "- 若题材天然带倒计时（期限、仪式、赛季），给出 clock；没有就不填，不要硬造。",
+            "- breakingPoint：后续「不得不破戒」的触发点——什么事件会逼得她宁可付代价也要亮身份。",
+            "- powerMap：强弱格局必须遵守——女主真实最高、表面最低；男主中高位、护短、弱于女主（他护她，但每一次最后一击都是她自己完成）；渣夫靠她暗中扶持才有今天的地位却不知情；反派讲规矩、不亲自动手。",
+            "",
+            "【人物小传要求】5~12 人，至少含：女主、男主、女主之子（或情感软肋）、渣夫、反派、（如有）幕后反派。",
+            "- 每个主要角色写清：真实身份/表面身份、前史、性格、欲望、弱点、武器/筹码、弧光、强弱定位。",
+            "- 反派必须过「反派三查」：持续动机（她图什么）＋不蠢（每一步有表格、有投票、有程序）＋量级（背后站着谁）。",
+            "- 小传要有短剧感：讽刺点、秘密、后续揭晓的反转都写进去（如「他接到的最新任务是查找女主下落」「反派之子其实是渣夫的亲生子」）。",
+            "",
+            LOCALIZATION_RULES,
+            "（人名、地名、机构、冲突筹码全部欧美语境；小传正文用中文撰写。）",
+            "",
+            conceptBlock,
+            "",
+            analysisBlock,
+            redBlock ? `\n${redBlock}` : "",
+          ].join("\n"),
+        });
+
+        // 第二步：剧本正文（基于地基写连贯集 + 投流素材）
+        const scriptObj = await generateObject({
+          model: await getModel(),
+          maxRetries: 3,
+          schema: conceptPackScriptSchema,
+          prompt: [
+            "你是资深海外竖屏短剧总编剧。基于方向卡与人物小传，产出可直接投流测试的剧本包。",
             "",
             "【产出要求】",
             "1. episodes：3~5 集**连贯**剧本（epNo 从 1 连续编号）。这前几集本身就必须是可投流的素材——开场 3 秒出钩子、每集结尾强悬念、把最炸的情绪点前置。",
-            "2. promoClips：**恰好 2 集不连贯的投流素材**。它们各自是一集**完整的剧本**（2-4 个场景 + 结尾悬念），但集号不与前面连贯集衔接——因为投流素材常取自全剧最炸的段落，不一定在开头。每集要标出它实际落在全剧第几集（epNo，比如 9、21，需大于连贯集的最大集号且不超过总集数），并给一句 premise 让没看过前情的观众秒懂这段戏。",
-            "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢；关键信息用可视物证呈现；狠话改当下动作。",
+            "2. promoClips：**恰好 2 集不连贯的投流素材**。它们各自是一集**完整的剧本**（2-4 个场景 + 结尾黑场悬念），但集号不与前面连贯集衔接——因为投流素材常取自全剧最炸的段落，不一定在开头。每集要标出它实际落在全剧第几集（epNo，比如 9、21，需大于连贯集的最大集号且不超过总集数），给一句 premise 让没看过前情的观众秒懂这段戏，并按「A 终极掉马·王储宣言」这种「字母+短语概括卖点」的风格起 promoName。",
+            "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢（用程序/规则打人）；关键信息用可视物证呈现；狠话改当下动作。",
             "4. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
-            "5. 【核心期待锁死】全剧主线必须兑现方案里锁定的核心期待（keptExpectation）——只换元素外皮，关系结构与情绪承诺（如先婚后爱/复仇打脸/身份错位）一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
+            "5. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
             "",
-            "【语言：中英双语】剧本包全程双语输出——",
-            "- 英文（en/title/location/time/cliffhanger/hookLine）= 拍摄稿，用地道美式英文（场景头 'INT. MANSION — NIGHT' 格式），可直接投给欧美演员；",
-            "- 中文（zh/titleZh/locationZh/timeZh/cliffhangerZh/hookLineZh）= 审阅稿，是与英文逐条对应的准确中文翻译，方便编审校对；",
-            "- logline、premise、positionHint 用中文（给你看的说明文字）。",
-            "- 每条 beat 的 en 与 zh 必须一一对应、意思一致，不许漏译或自由发挥。",
+            "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
+            "- 场景头四要素拆成字段：timeOfDay（日/夜/傍晚/晨）、intExt（内/外/内外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。",
+            "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句话一个动作，短、狠、能拍。",
+            "- dialogue 节拍：character=角色中文名，mood=情绪状态（如 压低声音，郑重），en=地道美式英文台词，zh=与英文准确对应的简体中文翻译。en/zh 必须一一对应，不许漏译或自由发挥。",
+            "- caption 节拍：【字幕】，en=英文大字幕（如 PRINCESS ELEANOR OF VALMORIA · HEIR TO THE THRONE），zh=简体中文。用于人物出场名片、金额、关键信息特写。",
+            "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 闪切: 九年前的雨夜…），**不要自带【】括号**。每集最后一个节拍用 note 收尾（特效: 黑场）。",
+            "- logline、premise、positionHint、promoName、场景头字段全部用简体中文（给你看的说明文字）；只有台词 en 和字幕 en 是英文。",
             "",
             LOCALIZATION_RULES,
-            "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文部分严禁任何中式表达。）",
+            "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文台词严禁任何中式表达。）",
             "",
-            "===== 换皮方案 =====",
-            `题材外皮：${concept.genre}`,
-            `锁定核心期待（全剧必须兑现，禁止改写）：${concept.keptExpectation}`,
-            `主角：${concept.protagonist}`,
-            `背景：${concept.setting}`,
-            `外皮差异化卖点：${concept.twist}`,
-            `更换的元素外皮：${(concept.swappedElements ?? []).join("、") || "（无）"}`,
-            `沿用爆款元素：${concept.keepElements.join("、") || "（无）"}`,
-            `新剧总集数：${pool.totalEpisodes}，单集约 ${pool.episodeSeconds} 秒`,
+            conceptBlock,
             "",
-            a ? `===== 爆款核心期待（全剧主线服务于此） =====\n${a.coreExpectation}\n\n钩子节奏参考：${a.hookRhythm}\n付费卡点规律：${a.paywallPattern}` : "",
-            redTexts.length
-              ? `\n===== 已验证的投流爆款素材段（供情绪结构参考，勿照抄） =====\n${redTexts.map((t, i) => `【素材${i + 1}】${t}`).join("\n\n")}`
-              : "",
+            "===== 方向卡 =====",
+            `核心期待：${foundation.object.directionCard.expectation}`,
+            `元素：${foundation.object.directionCard.elements.join("、")}`,
+            `忍的代价（写死）：${foundation.object.directionCard.enduranceCost}`,
+            foundation.object.directionCard.clock ? `时钟：${foundation.object.directionCard.clock}` : "",
+            foundation.object.directionCard.mastermind ? `幕后反派：${foundation.object.directionCard.mastermind}` : "",
+            `不得不破戒的触发点：${foundation.object.directionCard.breakingPoint}`,
+            `强弱格局：${foundation.object.directionCard.powerMap}`,
+            "",
+            "===== 人物小传 =====",
+            JSON.stringify(foundation.object.characters, null, 2),
+            "",
+            analysisBlock,
+            redBlock ? `\n${redBlock}` : "",
           ].join("\n"),
         });
+
         const pack: ConceptScriptPack = {
           conceptId: input.conceptId,
-          logline: object.logline,
-          episodes: object.episodes as EpisodeScript[],
-          promoClips: object.promoClips,
+          logline: foundation.object.logline,
+          directionCard: foundation.object.directionCard,
+          characters: foundation.object.characters,
+          episodes: scriptObj.object.episodes as EpisodeScript[],
+          promoClips: scriptObj.object.promoClips,
           status: "done",
         };
         const db = getDb();
@@ -591,6 +693,7 @@ export const pipelineRouter = createRouter({
       try {
         const { object } = await generateObject({
           model: await getModel(),
+          maxRetries: 3,
           schema: evalReportSchema,
           prompt: [
             EVALUATOR_CORE,
@@ -606,8 +709,18 @@ export const pipelineRouter = createRouter({
             concept?.keptExpectation ? `方案锁定的核心期待（剧本必须兑现它）：${concept.keptExpectation}` : "",
             "【换皮质检红线】若发现剧本把核心期待改写/漂移了（而不是只换元素外皮——黑手党/狼人/霸总这类题材包装可以换，先婚后爱/复仇打脸/身份错位这类期待结构不能换），计为阻挡项，明确指出漂移点并要求改回锁定期待。",
             "",
-            `===== 剧本包（${pack.episodes.length} 集连贯 + ${pack.promoClips.length} 段投流素材） =====`,
-            JSON.stringify({ logline: pack.logline, episodes: pack.episodes, promoClips: pack.promoClips }, null, 2),
+            `===== 剧本包（方向卡 + ${pack.characters?.length ?? 0} 个人物 + ${pack.episodes.length} 集连贯 + ${pack.promoClips.length} 段投流素材） =====`,
+            JSON.stringify(
+              {
+                logline: pack.logline,
+                directionCard: pack.directionCard,
+                characters: pack.characters,
+                episodes: pack.episodes,
+                promoClips: pack.promoClips,
+              },
+              null,
+              2,
+            ),
           ].join("\n"),
         });
         const report: EvalReport = { ...object, scope: "script" } as EvalReport;
