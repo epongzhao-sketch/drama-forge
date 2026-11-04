@@ -267,7 +267,7 @@ export function ScriptPacks({
               <Button onClick={() => genMut.mutate({ projectId, conceptId: activeId })} disabled={genMut.isPending}>
                 {genMut.isPending ? "正在产出剧本包…" : legacy ? "重新产出（新版格式）" : "产出该方案的剧本包"}
               </Button>
-              {genMut.isPending && <Generating text="先定方向卡与人物小传，再写 3~5 集连贯剧本 + 2 集投流素材（约 3-4 分钟）…" />}
+              {genMut.isPending && <Generating text="先定方向卡与人物小传（约 2-4 分钟），再写连贯剧本与投流素材（约 3-7 分钟）——全程可能 5-10 分钟，请保持页面打开…" />}
               {genMut.error && <ErrorBox message={genMut.error.message} />}
             </div>
           )}
@@ -279,7 +279,7 @@ export function ScriptPacks({
                   重新产出
                 </Button>
               </div>
-              {genMut.isPending && <Generating text="重新产出中（方向卡 + 人物小传 + 剧本）…" />}
+              {genMut.isPending && <Generating text="重新产出中（方向卡 + 人物小传 + 剧本，全程约 5-10 分钟）…" />}
               {genMut.error && <ErrorBox message={genMut.error.message} />}
               <PackView pack={activePack} />
             </>

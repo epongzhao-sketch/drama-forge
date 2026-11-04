@@ -69,7 +69,7 @@ export function RemapConcepts({
           </Button>
           {!analysis && <p className="mt-2 text-xs text-muted-foreground">需要先完成 AI 拆解。</p>}
         </div>
-        {genMut.isPending && <Generating text="锁定核心期待，正在为同一期待换 10 种元素外皮…" />}
+        {genMut.isPending && <Generating text="锁定核心期待，正在为同一期待换 10 种元素外皮（约 1-3 分钟）…" />}
         {genMut.error && <ErrorBox message={genMut.error.message} />}
       </section>
 

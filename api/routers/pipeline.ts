@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { generateObject } from "ai";
 import { eq, and, asc } from "drizzle-orm";
 import { createRouter, authedQuery } from "../middleware";
 import { getDb } from "../queries/connection";
@@ -12,7 +11,7 @@ import {
   scriptPacks,
   evaluations,
 } from "@db/schema";
-import { getModel } from "../ai/provider";
+import { getModel, generateObjectStreamed } from "../ai/provider";
 import { classifyAiError } from "../ai/client";
 import {
   EVALUATOR_CORE,
@@ -393,7 +392,7 @@ export const pipelineRouter = createRouter({
       const segs = (sample.redSegments ?? []) as RedSegment[];
       const marked = injectRedMarkers(sample.content.slice(0, MAX_SAMPLE_CHARS), segs);
       try {
-        const { object } = await generateObject({
+        const { object } = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: analysisSchema,
@@ -448,7 +447,7 @@ export const pipelineRouter = createRouter({
       }
       const a = analysis.result as AnalysisResult;
       try {
-        const { object } = await generateObject({
+        const { object } = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: z.object({ concepts: z.array(conceptSchema).length(10) }),
@@ -555,7 +554,7 @@ export const pipelineRouter = createRouter({
 
       try {
         // 第一步：方向卡 + 人物小传（剧本的世界观地基）
-        const foundation = await generateObject({
+        const foundation = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: packFoundationSchema,
@@ -585,7 +584,7 @@ export const pipelineRouter = createRouter({
         });
 
         // 第二步：剧本正文（基于地基写连贯集 + 投流素材）
-        const scriptObj = await generateObject({
+        const scriptObj = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: conceptPackScriptSchema,
@@ -691,7 +690,7 @@ export const pipelineRouter = createRouter({
       const pool = await loadRemapPool(input.projectId);
       const concept = pool?.concepts.find((c) => c.id === input.conceptId);
       try {
-        const { object } = await generateObject({
+        const { object } = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: evalReportSchema,

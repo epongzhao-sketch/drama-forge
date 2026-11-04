@@ -39,7 +39,7 @@ export function AnalysisView({
             </p>
           </div>
           {runMut.isPending ? (
-            <Generating text="正在拆解爆款样本…" />
+            <Generating text="正在拆解爆款样本（约 1-2 分钟）…" />
           ) : (
             <Button
               onClick={() => runMut.mutate({ projectId })}
