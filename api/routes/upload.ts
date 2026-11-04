@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { authenticateRequest } from "../kimi/auth";
 import { visionTranscribePages } from "../ai/vision";
+import { chargeUsage } from "../ai/wallet";
 
 const MAX_IMAGES = 20;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -24,7 +25,6 @@ uploadRoutes.post("/vision", async (c) => {
   } catch {
     return c.json({ error: "请先登录" }, 401);
   }
-  void user;
 
   let form: FormData;
   try {
@@ -78,7 +78,15 @@ uploadRoutes.post("/vision", async (c) => {
       console.log(
         `[vision] ${images.length} pages, ${result.text.length} chars in ${((Date.now() - t0) / 1000).toFixed(1)}s, tokens in=${result.usage.input} out=${result.usage.output}`,
       );
-      await send({ done: true, text: result.text, via: "vision", layoutMatters: true });
+      // 视觉转写计点（站点代购通道——视觉模型走 Anthropic 网关，无 BYOK）
+      const billing = await chargeUsage({
+        userId: user.id,
+        action: "vision",
+        inputTokens: result.usage.input,
+        outputTokens: result.usage.output,
+        via: "site",
+      });
+      await send({ done: true, text: result.text, via: "vision", layoutMatters: true, creditsCharged: billing.charged });
     } catch (err) {
       await send({ done: true, error: err instanceof Error ? err.message : "视觉识别失败" });
     } finally {

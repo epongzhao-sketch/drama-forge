@@ -19,12 +19,45 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   avatar: text("avatar"),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  /** BYOK：用户自己的 Kimi 开放平台 API Key（AES-256-GCM 加密存储） */
+  kimiApiKeyEnc: text("kimiApiKeyEnc"),
+  /** 内部点数余额（点数 = 实际模型 token 消耗 × 1.25，含 25% 平台服务费） */
+  creditBalance: bigint("creditBalance", { mode: "number" }).notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),
   lastSignInAt: timestamp("lastSignInAt").defaultNow().notNull(),
+});
+
+/** AI 用量流水：每次模型调用记录真实 token 与点数扣减 */
+export const usageLogs = mysqlTable("usage_logs", {
+  id: serial("id").primaryKey(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true }),
+  /** 业务动作：analysis / concepts / pack_foundation / pack_script / evaluate / vision */
+  action: varchar("action", { length: 32 }).notNull(),
+  model: varchar("model", { length: 128 }),
+  inputTokens: int("inputTokens").notNull().default(0),
+  outputTokens: int("outputTokens").notNull().default(0),
+  /** 扣减的点数（含 25% 平台服务费），余额不足未扣则为 0 */
+  creditsCharged: bigint("creditsCharged", { mode: "number" }).notNull().default(0),
+  /** 计费路径：byok=用户自带 Key，site=站点代购 */
+  via: mysqlEnum("via", ["byok", "site"]).notNull().default("site"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** 点数钱包流水：充值 / 消费 / 调整 */
+export const creditTransactions = mysqlTable("credit_transactions", {
+  id: serial("id").primaryKey(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  /** 正=入账（充值/调整），负=扣减 */
+  delta: bigint("delta", { mode: "number" }).notNull(),
+  balanceAfter: bigint("balanceAfter", { mode: "number" }).notNull(),
+  kind: mysqlEnum("kind", ["recharge", "consume", "adjust"]).notNull(),
+  note: varchar("note", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;
@@ -173,6 +206,8 @@ export const evaluations = mysqlTable(
 );
 
 export type Project = typeof projects.$inferSelect;
+export type UsageLog = typeof usageLogs.$inferSelect;
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
 export type Sample = typeof samples.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
 export type Remap = typeof remaps.$inferSelect;

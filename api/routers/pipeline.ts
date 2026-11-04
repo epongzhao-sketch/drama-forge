@@ -11,7 +11,7 @@ import {
   scriptPacks,
   evaluations,
 } from "@db/schema";
-import { getModel, generateObjectStreamed } from "../ai/provider";
+import { generateObjectBilled } from "../ai/provider";
 import { classifyAiError } from "../ai/client";
 import {
   EVALUATOR_CORE,
@@ -392,8 +392,8 @@ export const pipelineRouter = createRouter({
       const segs = (sample.redSegments ?? []) as RedSegment[];
       const marked = injectRedMarkers(sample.content.slice(0, MAX_SAMPLE_CHARS), segs);
       try {
-        const { object } = await generateObjectStreamed({
-          model: await getModel(),
+        const { object } = await generateObjectBilled({
+          billing: { userId: ctx.user.id, projectId: input.projectId, action: "analysis" },
           maxRetries: 3,
           schema: analysisSchema,
           prompt: [
@@ -447,8 +447,8 @@ export const pipelineRouter = createRouter({
       }
       const a = analysis.result as AnalysisResult;
       try {
-        const { object } = await generateObjectStreamed({
-          model: await getModel(),
+        const { object } = await generateObjectBilled({
+          billing: { userId: ctx.user.id, projectId: input.projectId, action: "concepts" },
           maxRetries: 3,
           schema: z.object({ concepts: z.array(conceptSchema).length(10) }),
           prompt: [
@@ -554,8 +554,8 @@ export const pipelineRouter = createRouter({
 
       try {
         // 第一步：方向卡 + 人物小传（剧本的世界观地基）
-        const foundation = await generateObjectStreamed({
-          model: await getModel(),
+        const foundation = await generateObjectBilled({
+          billing: { userId: ctx.user.id, projectId: input.projectId, action: "pack_foundation" },
           maxRetries: 3,
           schema: packFoundationSchema,
           prompt: [
@@ -584,8 +584,8 @@ export const pipelineRouter = createRouter({
         });
 
         // 第二步：剧本正文（基于地基写连贯集 + 投流素材）
-        const scriptObj = await generateObjectStreamed({
-          model: await getModel(),
+        const scriptObj = await generateObjectBilled({
+          billing: { userId: ctx.user.id, projectId: input.projectId, action: "pack_script" },
           maxRetries: 3,
           schema: conceptPackScriptSchema,
           prompt: [
@@ -690,8 +690,8 @@ export const pipelineRouter = createRouter({
       const pool = await loadRemapPool(input.projectId);
       const concept = pool?.concepts.find((c) => c.id === input.conceptId);
       try {
-        const { object } = await generateObjectStreamed({
-          model: await getModel(),
+        const { object } = await generateObjectBilled({
+          billing: { userId: ctx.user.id, projectId: input.projectId, action: "evaluate" },
           maxRetries: 3,
           schema: evalReportSchema,
           prompt: [
