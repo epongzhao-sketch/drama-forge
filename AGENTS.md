@@ -53,6 +53,8 @@ npm run build      # 前端 vite build + esbuild 打包后端为 dist/boot.js
 npm start          # 生产运行（需 NODE_ENV=production 才监听端口）
 ```
 
+本地开发登录：OAuth 应用白名单一般只登记线上域名，localhost 回调换 token 会报 Invalid redirect_uri。开发环境直接访问 `http://localhost:3000/api/dev-login` 即可免 OAuth 登录（用 OWNER_UNION_ID 签发会话，自动 admin；仅 dev + localhost 可用，生产构建不含此路由）。
+
 ## 血泪教训（勿重蹈）
 
 1. **部署模型**：平台 zip 只带 `bootstrap + dist/ + .env + package.json`，无 node_modules——后端必须 esbuild 单文件打包成 `dist/boot.js`，绝不能换成裸 tsc。`.dockerignore` 里**不能排除 dist**（会导致部署快照不变）。
