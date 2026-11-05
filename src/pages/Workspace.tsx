@@ -3,13 +3,14 @@ import { useParams, Link } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader, Led, ErrorBox } from "@/components/chrome";
+import { Button } from "@/components/ui/button";
 import { PIPELINE_STAGES, type PipelineStageKey } from "@contracts/pipeline";
 import { SampleEditor } from "@/components/pipeline/SampleEditor";
 import { AnalysisView } from "@/components/pipeline/AnalysisView";
 import { RemapConcepts } from "@/components/pipeline/RemapConcepts";
 import { ScriptPacks } from "@/components/pipeline/ScriptPacks";
 import { Finalize } from "@/components/pipeline/Finalize";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, Info, Trophy } from "lucide-react";
 
 export default function Workspace() {
   const { id } = useParams<{ id: string }>();
@@ -55,6 +56,43 @@ export default function Workspace() {
     const next = PIPELINE_STAGES[stageIndex + dir];
     if (next) setStage(next.key);
   };
+
+  // 每阶段完成判定 + 未完成时的行动指引（底部引导条的数据源）
+  type StageFlow = { done: boolean; doneText: string; todo: string; todoStage?: PipelineStageKey };
+  const stageFlow: StageFlow | null = useMemo(() => {
+    if (!status) return null;
+    const flow: Record<PipelineStageKey, StageFlow> = {
+      sample: status.hasSample
+        ? { done: true, doneText: "样本已保存", todo: "" }
+        : { done: false, doneText: "", todo: "上传或粘贴剧本，标红爆款素材段，然后点「保存样本」" },
+      analysis: !status.hasSample
+        ? { done: false, doneText: "", todo: "AI 拆解需要先有样本", todoStage: "sample" }
+        : status.hasAnalysis
+          ? { done: true, doneText: "拆解报告已生成", todo: "" }
+          : { done: false, doneText: "", todo: "点击「开始 AI 拆解」，等待约 1-2 分钟生成拆解报告" },
+      remap: !status.hasAnalysis
+        ? { done: false, doneText: "", todo: "换皮方案基于拆解报告生成，请先完成 AI 拆解", todoStage: "analysis" }
+        : !status.hasRemap
+          ? { done: false, doneText: "", todo: "点「生成 10 个换皮方案」，等待 AI 产出（约 1-3 分钟）" }
+          : status.selectedCount === 0
+            ? { done: false, doneText: "", todo: "勾选 3~5 个最看好的方案，然后点「确认粗选」" }
+            : { done: true, doneText: `已粗选 ${status.selectedCount} 个方案`, todo: "" },
+      pack:
+        status.selectedCount === 0
+          ? { done: false, doneText: "", todo: "剧本包按入选方案产出，请先在「换皮方案」完成粗选", todoStage: "remap" }
+          : status.packCount === 0
+            ? { done: false, doneText: "", todo: "选中一个方案，点「产出该方案的剧本包」（每个约 5-10 分钟）" }
+            : status.packCount < status.selectedCount
+              ? { done: true, doneText: `已产出 ${status.packCount}/${status.selectedCount} 个剧本包，可继续产出，也可以直接去定稿`, todo: "" }
+              : { done: true, doneText: `${status.packCount} 个剧本包全部产出`, todo: "" },
+      final: status.hasFinal
+        ? { done: true, doneText: "已选定最终成品，本项目完成 🎉", todo: "" }
+        : status.packCount === 0
+          ? { done: false, doneText: "", todo: "还没有剧本包可审，请先在「剧本产出」生成", todoStage: "pack" }
+          : { done: false, doneText: "", todo: "逐个审阅剧本包（可先跑判档质检），点「选定此方案为最终成品」" },
+    };
+    return flow[stage];
+  }, [status, stage]);
 
   if (error) {
     return (
@@ -119,7 +157,11 @@ export default function Workspace() {
                       <span className="mono-label mt-0.5 block text-[8px]">{s.en}</span>
                     </span>
                     <span className="ml-auto pl-2">
-                      <Led tone={st === "done" ? "mint" : st === "active" ? "amber" : undefined} pulse={st === "active"} />
+                      {st === "done" ? (
+                        <Check className="h-3.5 w-3.5 text-[hsl(var(--mint))]" />
+                      ) : (
+                        <Led tone={st === "active" ? "amber" : undefined} pulse={st === "active"} />
+                      )}
                     </span>
                   </button>
                 );
@@ -151,16 +193,18 @@ export default function Workspace() {
                   onClick={() => goStage(-1)}
                   disabled={stageIndex === 0}
                   aria-label="上一阶段"
-                  className="flex h-11 w-11 items-center justify-center border border-border transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-30"
+                  className="flex h-11 items-center gap-1 border border-border px-3 text-xs transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-30"
                 >
                   <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden md:inline">上一步</span>
                 </button>
                 <button
                   onClick={() => goStage(1)}
                   disabled={stageIndex === PIPELINE_STAGES.length - 1}
                   aria-label="下一阶段"
-                  className="flex h-11 w-11 items-center justify-center border border-border transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-30"
+                  className="flex h-11 items-center gap-1 border border-border px-3 text-xs transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-30"
                 >
+                  <span className="hidden md:inline">下一步</span>
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
@@ -201,6 +245,55 @@ export default function Workspace() {
                 packEval={data.evaluations.find((e) => e.scope === "pack")?.report ?? null}
                 onDone={refresh}
               />
+            )}
+
+            {/* 底部引导条：未完成 → 告诉用户该做什么；完成 → 醒目的「下一步」 */}
+            {stageFlow && (
+              <div className="sticky bottom-3 z-20 mt-8 flex flex-wrap items-center gap-3 border border-primary/40 bg-card/95 px-4 py-3.5 shadow-lg shadow-black/30 backdrop-blur">
+                {stageFlow.done ? (
+                  <>
+                    <p className="flex min-w-0 items-center gap-2 text-xs text-foreground/85">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-[hsl(var(--mint))]" />
+                      <span>{stageFlow.doneText}</span>
+                    </p>
+                    <div className="flex-1" />
+                    {stageIndex < PIPELINE_STAGES.length - 1 ? (
+                      <Button onClick={() => goStage(1)} className="h-11 gap-1.5 px-5 text-sm font-medium">
+                        下一步：{PIPELINE_STAGES[stageIndex + 1].label}
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Link to="/">
+                        <Button variant="secondary" className="h-11 gap-1.5 px-5 text-sm font-medium">
+                          <Trophy className="h-4 w-4 text-[hsl(var(--mint))]" />
+                          完成，返回项目库
+                        </Button>
+                      </Link>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                      <Info className="h-4 w-4 shrink-0 text-primary" />
+                      <span>{stageFlow.todo}</span>
+                    </p>
+                    <div className="flex-1" />
+                    {stageFlow.todoStage ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => setStage(stageFlow.todoStage!)}
+                        className="h-10 gap-1.5"
+                      >
+                        回到「{PIPELINE_STAGES.find((s) => s.key === stageFlow.todoStage)?.label}」
+                      </Button>
+                    ) : (
+                      <span className="mono-label text-[10px] text-muted-foreground">
+                        完成本阶段后，这里会出现「下一步」按钮
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </main>
 

@@ -153,6 +153,11 @@ export default function Home() {
             <span className="mono-label border border-primary/50 px-3 py-1.5 text-[10px] text-primary">
               + 新建项目
             </span>
+            <p className="mono-label text-[9px] leading-relaxed text-muted-foreground">
+              录入标红样本 → AI 拆解 → 换皮方案 → 剧本产出 → 编审定稿
+              <br />
+              每一步完成后，点页面底部的「下一步」按钮进入下一阶段
+            </p>
           </button>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

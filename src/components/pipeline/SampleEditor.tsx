@@ -34,6 +34,7 @@ export function SampleEditor({
   const [mode, setMode] = useState<"edit" | "preview">(initial ? "preview" : "edit");
   const [editedAfterMark, setEditedAfterMark] = useState(false);
   const [pasteMsg, setPasteMsg] = useState<string | null>(null);
+  const [savedTick, setSavedTick] = useState(false);
   const [importing, setImporting] = useState<string | null>(null); // 正在解析的文件名
   const [importDetail, setImportDetail] = useState<string | null>(null); // 服务端回传的识别进度
   const [dragging, setDragging] = useState(false);
@@ -43,6 +44,7 @@ export function SampleEditor({
   const saveMut = trpc.pipeline.saveSample.useMutation({
     onSuccess: () => {
       setEditedAfterMark(false);
+      setSavedTick(true);
       onSaved();
     },
   });
@@ -231,6 +233,11 @@ export function SampleEditor({
       )}
       {pasteMsg && (
         <p className="border border-primary/40 bg-primary/10 px-3 py-2 text-xs text-primary">{pasteMsg}</p>
+      )}
+      {savedTick && !dirty && (
+        <p className="border border-[hsl(var(--mint))]/40 bg-[hsl(var(--mint))]/10 px-3 py-2 text-xs text-[hsl(var(--mint))]">
+          ✓ 样本已保存 —— 点击页面底部的「下一步：AI 拆解」继续。
+        </p>
       )}
       {editedAfterMark && (
         <p className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
