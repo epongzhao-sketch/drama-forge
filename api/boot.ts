@@ -1,12 +1,16 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { setCookie } from "hono/cookie";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { env } from "./lib/env";
 import { createOAuthCallbackHandler } from "./kimi/auth";
-import { Paths } from "@contracts/constants";
+import { signSessionToken } from "./kimi/session";
+import { upsertUser } from "./queries/users";
+import { getSessionCookieOptions } from "./lib/cookies";
+import { Paths, Session } from "@contracts/constants";
 import { log } from "./lib/logger";
 import { handleClientLog } from "./lib/clientlog";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
@@ -61,6 +65,25 @@ app.use("*", async (c, next) => {
 // /api/log keeps its own 64KB caps in lib/clientlog.ts, so it needs no middleware.
 app.use("/api/trpc/*", bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 app.get(Paths.oauthCallback, createOAuthCallbackHandler());
+// 本地开发绕过 OAuth：OAuth 应用的白名单通常只登记了线上域名，localhost 回调
+// 会在换 token 时被判 Invalid redirect_uri。开发态用 OWNER_UNION_ID 直接签发
+// 会话 cookie（等价于 owner 本人登录），仅监听 localhost 时可用，生产构建不含此路由。
+if (!env.isProduction) {
+  app.get("/api/dev-login", async (c) => {
+    const host = c.req.header("host") ?? "";
+    if (!host.startsWith("localhost") && !host.startsWith("127.0.0.1")) {
+      return c.json({ error: "dev-login is only available on localhost" }, 403);
+    }
+    const unionId = env.ownerUnionId || "dev-local-user";
+    await upsertUser({ unionId, name: "本地开发", lastSignInAt: new Date() });
+    const token = await signSessionToken({ unionId, clientId: env.appId });
+    setCookie(c, Session.cookieName, token, {
+      ...getSessionCookieOptions(c.req.raw.headers),
+      maxAge: Session.maxAgeMs / 1000,
+    });
+    return c.redirect("/", 302);
+  });
+}
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",
