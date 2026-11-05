@@ -12,6 +12,7 @@ import {
   evaluations,
 } from "@db/schema";
 import { getModel, generateObjectStreamed } from "../ai/provider";
+import { DNA_ANALYSIS, DNA_CONCEPTS, DNA_FOUNDATION, DNA_SCRIPT, DNA_EVAL, DNA_DE_AI, CORPUS_STATS } from "../ai/dna";
 import { classifyAiError } from "../ai/client";
 import {
   EVALUATOR_CORE,
@@ -23,6 +24,8 @@ import type {
   AnalysisResult,
   RemapPool,
   ConceptScriptPack,
+  CharacterBio,
+  DirectionCard,
   EpisodeScript,
   EvalReport,
   StoredSourceFile,
@@ -48,11 +51,45 @@ const analysisSchema = z.object({
   coreConflict: z.string().describe("核心冲突"),
   hookRhythm: z.string().describe("钩子节奏规律（每多少秒/多少场一个钩子，如何升级）"),
   hookTypes: z.array(z.string()).describe("出现的钩子类型清单"),
+  hook4: z
+    .object({
+      visual3s: z.string().describe("前 3 秒视觉钩：反常画面（血/跪下/床/钱/怪物真身）不给解释——写出样本第 1 集实际用的那个画面"),
+      info30s: z.string().describe("前 30 秒信息钩：身份反差+利害关系+隐藏威胁三连，逐个列出"),
+      golden60s: z.string().describe("前 60 秒金钩：亮出的全剧底牌（重生闪回/隐藏身份/命中注定）"),
+      epEndPain: z.string().describe("第 1 集集尾痛点钩：锁定全剧核心冲突的那句内白/动作"),
+    })
+    .describe("第 1 集四层钩拆解，缺一不可"),
+  openingSkeleton: z.string().describe("开局骨架判定：冷开场闪回式 还是 VO 自我介绍式，以及为什么适配该赛道"),
   paywallPattern: z.string().describe("付费卡点设置规律（卡点兑现的是什么、卡在第几集、由谁的主动选择构成）"),
+  paywallTable: z
+    .array(z.object({ ep: z.string().describe("集数位置，如 EP5"), event: z.string().describe("卡点事件"), intensity: z.number().min(1).max(10).describe("情绪强度打分 1-10") }))
+    .describe("付费墙位置表：每个卡点一行；付费墙必须 ≥9/10 大情绪点"),
+  beatDensity: z.string().describe("卡点密度曲线：低开高走、每 5 集一个台阶，描述样本实际分布"),
+  arcs: z
+    .array(
+      z.object({
+        character: z.string(),
+        start: z.string().describe("起点状态+情绪关键词"),
+        turn: z.string().describe("转折点+情绪关键词"),
+        climax: z.string().describe("高潮点+情绪关键词"),
+        end: z.string().describe("终点状态+情绪关键词"),
+      }),
+    )
+    .describe("主要人物四态弧线（含反派：入局→起势→暴露→崩塌），人物不用性格定义、用四个状态定义"),
+  emotionCurve5: z.string().describe("全剧情绪 5 段式落位：隐忍→蒙冤→觉醒→翻盘→收束，各段在样本中的集数区间"),
   redSegmentTraits: z
     .array(z.object({ quote: z.string(), trait: z.string() }))
     .describe("每个红标段的原文摘录(短)与它之所以能爆的原因（情绪卖点/核心期待）"),
   transferableElements: z.array(z.string()).describe("可迁移到新作的爆款元素"),
+  motifs: z.array(z.string()).describe("母题库复合拆解：本剧 = 哪 2-4 个成熟母题的叠加（如 重生复仇+调包+隐藏身份）"),
+  objectHooks: z.array(z.string()).describe("贯穿物件钩：样本里承担伏笔—羞辱—反转认亲链条的物件（泰迪熊/婚戒/金剑吊坠类），没有就说没有"),
+  reskinGate: z
+    .object({
+      skeleton: z.string().describe("换皮第一关·骨架成立：核心设定的硬支撑是什么（如 主角开局主动放弃巨大既得利益）"),
+      adaptMotifs: z.string().describe("换皮第二关·融梗方法：哪些物件钩可挪用、哪些人物关系可替换变体"),
+      cultureFit: z.string().describe("换皮第三关·文化适配：样本的文化符号如何平移到目标市场中产认知锚点"),
+    })
+    .describe("换皮三关自检"),
   marketFit: z.string().describe("目标市场适配要点"),
 });
 
@@ -80,8 +117,9 @@ const scriptBeatSchema = z.object({
     .enum(["action", "dialogue", "caption", "note"])
     .describe("action=▲动作行；dialogue=台词；caption=【字幕】；note=【闪切/特效:黑场】等"),
   character: z.string().optional().describe("dialogue 专用：角色中文名"),
-  mood: z.string().optional().describe("dialogue 专用：情绪/状态提示，如 压低声音，郑重"),
-  en: z.string().optional().describe("dialogue/caption 专用：地道美式英文原文"),
+  mood: z.string().optional().describe("dialogue 专用：情绪/状态提示（2-6 字表演指令），如 压低声音，郑重"),
+  isVo: z.boolean().optional().describe("dialogue 专用：是否 VO 内心独白（女频占比 10-30%，开场定人设/转场补信息/集尾点题）"),
+  en: z.string().optional().describe("dialogue/caption 专用：地道美式英文原文（台词平均 5.5 词/句）"),
   zh: z.string().describe("action=动作行中文；dialogue=台词中文翻译；caption=字幕中文；note=说明文字"),
 });
 
@@ -113,6 +151,11 @@ const directionCardSchema = z.object({
   powerMap: z
     .string()
     .describe("强弱格局：女主真实地位vs表面地位、男主、渣夫、反派的相对强弱——男主护短但弱于女主，最后一击永远女主亲自完成"),
+  motifs: z.array(z.string()).describe("本剧 = 哪 2-4 个成熟母题的复合叠加（如 重生复仇+调包+隐藏身份+契约婚姻）"),
+  objectHooks: z
+    .array(z.object({ name: z.string().describe("物件名（具体、可拍）"), chain: z.string().describe("它承担的伏笔—羞辱—反转认亲链条") }))
+    .describe("2-3 个贯穿物件钩——台词会忘，物件不会"),
+  colorCode: z.string().describe("赛道主色情绪编码：冷色=虐/现实、暖色=回忆/甜、金光=觉醒/身份揭示、血红=背叛开局——给出本剧的一套"),
 });
 
 const characterBioSchema = z.object({
@@ -122,21 +165,53 @@ const characterBioSchema = z.object({
   age: z.string().optional(),
   realIdentity: z.string().optional().describe("真实身份"),
   coverIdentity: z.string().optional().describe("表面身份"),
+  captionCard: z
+    .string()
+    .optional()
+    .describe("首登场【字幕】身份卡：英文大名+中文对照，关系型角色标注关系（如 EVELYN CARTIER（埃芙琳·卡蒂尔）/ DANIEL (Matthew's sidekick)（丹尼尔·马修的跟班））"),
   backstory: z.string().optional().describe("前史"),
   personality: z.string().describe("性格"),
   desire: z.string().optional().describe("欲望"),
   weakness: z.string().optional().describe("弱点"),
   weapon: z.string().optional().describe("不暴露身份时的武器 / 筹码"),
-  arc: z.string().optional().describe("弧光：从…到…"),
+  arc: z.string().optional().describe("弧光一句话（从…到…）"),
+  arc4: z
+    .object({
+      start: z.string().describe("起点状态+情绪关键词"),
+      turn: z.string().describe("转折点+情绪关键词"),
+      climax: z.string().describe("高潮点+情绪关键词"),
+      end: z.string().describe("终点状态+情绪关键词"),
+    })
+    .optional()
+    .describe("四态弧线：人物用四个状态定义、不用性格定义；反派也必须有（入局→起势→暴露→崩塌）"),
   powerPosition: z.string().optional().describe("强弱定位"),
   villainCheck: z.string().optional().describe("反派三查：持续动机 / 不蠢（程序合法）/ 量级（背后的靠山）——仅反派填"),
 });
 
-/** 第一步：剧本包地基 = logline + 方向卡 + 人物小传 */
+/** 第一步：剧本包地基 = logline + 方向卡 + 人物小传 + 全剧集纲 */
 const packFoundationSchema = z.object({
   logline: z.string().describe("本方案一句话卖点（中文）"),
   directionCard: directionCardSchema,
   characters: z.array(characterBioSchema).min(5).max(12),
+  outline: z
+    .object({
+      expectation: z.string().describe("大期待：一句话锁死全剧（观众追到底在等的那件事）"),
+      framework: z.string().describe("框架：分型骨架（如 女频虐恋=辜负→觉醒→离开→追妻火葬场→加冕）+ 情绪 5 段式的集数落位"),
+      coreGimmick: z.string().describe("核心梗：本剧最独特、最好卖的那个装置"),
+      beats: z
+        .array(
+          z.object({
+            epNo: z.number().int(),
+            hook: z.string().describe("本集钩子（开场直接承接上集悬念）"),
+            plot: z.string().describe("剧情一句话"),
+            cliffhanger: z.string().describe("集尾悬念：台词中断/表情定格/新威胁登场 三选一"),
+            paywall: z.boolean().optional().describe("是否付费墙位置（EP5/12/24/38/45），付费墙集必须 ≥9/10 大情绪点"),
+          }),
+        )
+        .min(10)
+        .describe("逐集集纲：至少前 10 集逐集写全；之后可跳写关键节点（付费墙集、大反转集、大结局前 2 集必须写），付费墙按 EP5/12/24/38/45 布局"),
+    })
+    .describe("全剧集纲：大期待/框架/核心梗 + 逐集（钩子/剧情/集尾悬念）"),
 });
 
 const promoClipSchema = z.object({
@@ -398,6 +473,10 @@ export const pipelineRouter = createRouter({
           schema: analysisSchema,
           prompt: [
             "你是资深海外竖屏短剧（ReelShort / DramaBox 类）爆款内容分析师。",
+            `你的判断标准来自对 ${CORPUS_STATS.dramas} 部海外爆款短剧（${CORPUS_STATS.episodes} 集 / ${CORPUS_STATS.enDialogueLines} 行英文台词）的语料蒸馏（小黑DNA），请严格按下面的 DNA 尺子拆解：`,
+            "",
+            DNA_ANALYSIS,
+            "",
             "下面是一部海外爆款短剧的剧本/剧情样本。其中用【RED】…【/RED】包裹的段落是投流数据特别好的素材段落（用户重点标注）。",
             "请对样本做结构化拆解，**重点分析这些红标段为什么能成为投流爆款**——每一段都要回答：它抓住的核心期待是什么、情绪卖点是什么（爽点/虐点/反转/代入感），以及它为什么能在前 3 秒抓住人。所有字段用中文输出。",
             "",
@@ -407,6 +486,10 @@ export const pipelineRouter = createRouter({
             "- dramaType 填写品类判断（如：女频-豪门复仇、男频-战神赘婿、女频-甜宠闪婚 等），一句话点明赛道。",
             "- redSegmentTraits 里每个红标段的 trait 必须聚焦「这段之所以能爆的原因」——具体说清楚它命中了哪种情绪、制造了什么期待。",
             "- paywallPattern 必须回答三件事：卡点兑现的是什么期待、卡在第几集、由谁的主动选择构成（不能是巧合/误会自然解开）。",
+            "- hook4 按 DNA 四层钩逐层拆解样本第 1 集，每层都要引用样本里实际出现的画面/台词；openingSkeleton 判定开局骨架类型。",
+            "- paywallTable 把样本里能识别出的卡点列成表并打情绪强度分；beatDensity 描述卡点密度曲线。",
+            "- arcs 给每个主要人物（含反派）写四态弧线，每态绑一个情绪关键词；emotionCurve5 把情绪 5 段式映射到样本的集数区间。",
+            "- motifs 拆解样本的母题复合构成；objectHooks 找出贯穿物件钩；reskinGate 做换皮三关自检（骨架/融梗/文化适配），这是后续换皮方案的依据。",
             "",
             LOCALIZATION_RULES,
             "（拆解时若样本里出现中式元素，要在 transferableElements / marketFit 里指出它对应的欧美可迁移形式，而不是原样保留。）",
@@ -468,6 +551,11 @@ export const pipelineRouter = createRouter({
             "- swappedElements：换了哪些元素外皮（原元素 → 新元素）。",
             "- keepElements：原样沿用的爆款元素/桥段。",
             "",
+            "【小黑DNA 选题纪律（换皮方案必须过这三关）】",
+            DNA_CONCEPTS,
+            "",
+            "每个方案在心里过一遍换皮三关：①骨架成立——新外皮下核心设定仍有硬支撑；②融梗——拆解报告里的物件钩/母题哪些能平移进新语境；③文化适配——新皮的文化符号贴合目标市场中产认知锚点（北美=集团+酒店+Cartier，拉美=家族农场+独立日+教堂婚礼，东南亚=家族企业+寺庙+金饰）。方案本身不用把三关写出来，但 twist 与 keepElements 必须体现你考虑过它们。",
+            "",
             LOCALIZATION_RULES,
             "（10 个方案的主角名、背景、冲突筹码都必须落在欧美语境，禁止任何中式设定。）",
             "",
@@ -479,6 +567,11 @@ export const pipelineRouter = createRouter({
             `红标段爆款原因：${a.redSegmentTraits.map((r) => r.trait).join("；")}`,
             `钩子节奏：${a.hookRhythm}`,
             `付费卡点规律：${a.paywallPattern}`,
+            a.motifs?.length ? `母题复合构成：${a.motifs.join("、")}` : "",
+            a.objectHooks?.length ? `贯穿物件钩：${a.objectHooks.join("、")}` : "",
+            a.reskinGate
+              ? `换皮三关（样本侧）：骨架=${a.reskinGate.skeleton}；融梗=${a.reskinGate.adaptMotifs}；文化适配=${a.reskinGate.cultureFit}`
+              : "",
             `目标市场适配：${a.marketFit}`,
             input.notes ? `\n用户补充要求：${input.notes}` : "",
           ].join("\n"),
@@ -553,13 +646,16 @@ export const pipelineRouter = createRouter({
         : "";
 
       try {
-        // 第一步：方向卡 + 人物小传（剧本的世界观地基）
+        // 第一步：方向卡 + 人物小传 + 全剧集纲（剧本的世界观地基与 roadmap）
         const foundation = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: packFoundationSchema,
           prompt: [
-            "你是资深海外竖屏短剧总策划。为一个换皮方案产出剧本的地基：**方向卡 + 人物小传**。",
+            "你是资深海外竖屏短剧总策划。为一个换皮方案产出剧本的地基：**方向卡 + 人物小传 + 全剧集纲**。",
+            "",
+            "【小黑DNA 策划纪律】",
+            DNA_FOUNDATION,
             "",
             "【方向卡要求】",
             "- expectation：核心期待必须与方案锁定期待同义等价——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。",
@@ -567,11 +663,23 @@ export const pipelineRouter = createRouter({
             "- 若题材天然带倒计时（期限、仪式、赛季），给出 clock；没有就不填，不要硬造。",
             "- breakingPoint：后续「不得不破戒」的触发点——什么事件会逼得她宁可付代价也要亮身份。",
             "- powerMap：强弱格局必须遵守——女主真实最高、表面最低；男主中高位、护短、弱于女主（他护她，但每一次最后一击都是她自己完成）；渣夫靠她暗中扶持才有今天的地位却不知情；反派讲规矩、不亲自动手。",
+            "- motifs：写出本剧的母题复合构成（2-4 个成熟母题叠加）。",
+            "- objectHooks：设计 2-3 个贯穿物件钩，每个写清它如何走「伏笔—羞辱—反转认亲」全链条。",
+            "- colorCode：给出本剧的色彩情绪编码（赛道主色）。",
             "",
             "【人物小传要求】5~12 人，至少含：女主、男主、女主之子（或情感软肋）、渣夫、反派、（如有）幕后反派。",
-            "- 每个主要角色写清：真实身份/表面身份、前史、性格、欲望、弱点、武器/筹码、弧光、强弱定位。",
+            "- 每个主要角色写清：真实身份/表面身份、前史、性格、欲望、弱点、武器/筹码、强弱定位。",
+            "- captionCard：给每个主要角色设计首登场【字幕】身份卡（英文大名+中文对照，关系型角色标注关系）。",
+            "- arc4：每个主要角色（含反派）写四态弧线——起点/转折/高潮/终点，各绑一个情绪关键词。反派弧线=入局→起势→暴露→崩塌，反派是观众情绪的靶向标靶。",
             "- 反派必须过「反派三查」：持续动机（她图什么）＋不蠢（每一步有表格、有投票、有程序）＋量级（背后站着谁）。",
             "- 小传要有短剧感：讽刺点、秘密、后续揭晓的反转都写进去（如「他接到的最新任务是查找女主下落」「反派之子其实是渣夫的亲生子」）。",
+            "",
+            "【全剧集纲要求】",
+            "- expectation：大期待一句话锁死全剧。",
+            "- framework：写出分型骨架落位（如 女频虐恋=辜负→觉醒→离开→追妻火葬场→加冕）+ 情绪 5 段式分别落在哪几集。",
+            "- coreGimmick：本剧最独特最好卖的那个装置。",
+            "- beats：前 10 集逐集写全（钩子/剧情/集尾悬念）；之后跳写关键节点——付费墙严格按 EP5/12/24/38/45 布局（如总集数不同则按 10%/25%/50%/75%/90% 位置换算取整），每个付费墙集标 paywall=true 且必须是 ≥9/10 大情绪点；大反转集、大结局前 2 集必须有；总条数控制在 16-24 条。",
+            "- 集尾悬念按 DNA 三类收法：台词中断型 / 表情定格型 / 新威胁登场型。",
             "",
             LOCALIZATION_RULES,
             "（人名、地名、机构、冲突筹码全部欧美语境；小传正文用中文撰写。）",
@@ -583,28 +691,36 @@ export const pipelineRouter = createRouter({
           ].join("\n"),
         });
 
-        // 第二步：剧本正文（基于地基写连贯集 + 投流素材）
+        // 第二步：剧本正文（基于地基与集纲写连贯集 + 投流素材）
         const scriptObj = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: conceptPackScriptSchema,
           prompt: [
-            "你是资深海外竖屏短剧总编剧。基于方向卡与人物小传，产出可直接投流测试的剧本包。",
+            "你是资深海外竖屏短剧总编剧。基于方向卡、人物小传与全剧集纲，产出可直接投流测试的剧本包。",
+            "",
+            "【小黑DNA 写作标准（语料实证，必须严格遵守）】",
+            DNA_SCRIPT,
             "",
             "【产出要求】",
-            "1. episodes：3~5 集**连贯**剧本（epNo 从 1 连续编号）。这前几集本身就必须是可投流的素材——开场 3 秒出钩子、每集结尾强悬念、把最炸的情绪点前置。",
-            "2. promoClips：**恰好 2 集不连贯的投流素材**。它们各自是一集**完整的剧本**（2-4 个场景 + 结尾黑场悬念），但集号不与前面连贯集衔接——因为投流素材常取自全剧最炸的段落，不一定在开头。每集要标出它实际落在全剧第几集（epNo，比如 9、21，需大于连贯集的最大集号且不超过总集数），给一句 premise 让没看过前情的观众秒懂这段戏，并按「A 终极掉马·王储宣言」这种「字母+短语概括卖点」的风格起 promoName。",
-            "3. 单集 2-4 个场景；台词短促、动作可视化、情绪浓度高；女主最后一击必须亲自完成；反派坏而不蠢（用程序/规则打人）；关键信息用可视物证呈现；狠话改当下动作。",
-            "4. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
+            "1. episodes：3~5 集**连贯**剧本（epNo 从 1 连续编号，对应集纲 beats 的前几集）。这前几集本身就必须是可投流的素材——第 1 集按 DNA 四层钩写：前 3 秒视觉钩 → 前 30 秒信息钩三连 → 前 60 秒金钩 → 集尾痛点钩；开局骨架按题材选冷开场闪回式或 VO 自我介绍式。",
+            "2. promoClips：**恰好 2 集不连贯的投流素材**。从集纲里的付费墙集/大反转集挑最炸的两段写成完整单集（2-4 个场景 + 结尾黑场悬念），集号不与连贯集衔接（需大于连贯集最大集号且不超过总集数）。每集给一句 premise 让没看过前情的观众秒懂这段戏，并按「A 礼堂掀桌·这座楼是我的钱」这种「字母+短语概括卖点」的风格起 promoName。",
+            "3. 单集体量按 DNA：2.2 场戏/集、约 20 行英文台词/集、只推进一个冲突单元；开场 1-2 行直接承接上集悬念不做空镜铺垫；对白回合制攻击—反击—升级；每集必有集尾钩（台词中断/表情定格/新威胁登场三选一），每集最后一个节拍用 note 收尾（特效: 黑场）。",
+            "4. 台词执行语言 DNA：平均 5.5 词/句、短句为主、长句只留给 VO 前史与身份揭晓审判句；高频功能句型按赛道复用；先把赛道术语群撒进台词；女频 VO 占台词 10-30%（isVo 标记），男频 <10%；金额/年份/年龄用具体数字进台词。",
             "5. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
+            "6. 物件钩要用起来：方向卡里设计的物件钩在剧本里要完成它当前阶段的链条动作（埋伏笔/羞辱/认亲）。",
+            "7. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
             "",
             "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
-            "- 场景头四要素拆成字段：timeOfDay（日/夜/傍晚/晨）、intExt（内/外/内外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。",
-            "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句话一个动作，短、狠、能拍。",
-            "- dialogue 节拍：character=角色中文名，mood=情绪状态（如 压低声音，郑重），en=地道美式英文台词，zh=与英文准确对应的简体中文翻译。en/zh 必须一一对应，不许漏译或自由发挥。",
-            "- caption 节拍：【字幕】，en=英文大字幕（如 PRINCESS ELEANOR OF VALMORIA · HEIR TO THE THRONE），zh=简体中文。用于人物出场名片、金额、关键信息特写。",
-            "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 闪切: 九年前的雨夜…），**不要自带【】括号**。每集最后一个节拍用 note 收尾（特效: 黑场）。",
+            "- 场景头四要素拆成字段：timeOfDay（日/夜/晨/昏）、intExt（内/外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。闪回直接写进 location（如 树林·闪回）。",
+            "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句一个镜头，15-35 字，情绪写成可视化表情指令（瞳孔收缩、死死攥紧、冷笑）。",
+            "- dialogue 节拍：character=角色中文名，mood=情绪表演指令（2-6 字，如 压低声音，郑重），isVo=是否内心独白，en=地道美式英文台词，zh=与英文对应的简体中文对照——中文对照要比英文更口语、更「剧」，可增译情绪（如 \"Say her name again, I dare you.\" →「你有种再说一遍她的名字」）。en/zh 必须一一对应，不许漏译或自由发挥。",
+            "- caption 节拍：【字幕】，en=英文大字幕，zh=简体中文。三类用途：角色首登场身份卡（用人物小传里设计的 captionCard）、金额/关键信息特写、集尾【字幕：未完待续】。身份/金额/反转词要上字幕——它是唯一的强调手段。",
+            "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 特效: 画面定格+金粉粒子 / 闪切: 九年前的雨夜…），**不要自带【】括号**。集尾视觉三板斧：定格→黑场/闪白→未完待续字幕。",
             "- logline、premise、positionHint、promoName、场景头字段全部用简体中文（给你看的说明文字）；只有台词 en 和字幕 en 是英文。",
+            "",
+            "【成稿自检（去 AI 味）】",
+            DNA_DE_AI,
             "",
             LOCALIZATION_RULES,
             "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文台词严禁任何中式表达。）",
@@ -619,9 +735,18 @@ export const pipelineRouter = createRouter({
             foundation.object.directionCard.mastermind ? `幕后反派：${foundation.object.directionCard.mastermind}` : "",
             `不得不破戒的触发点：${foundation.object.directionCard.breakingPoint}`,
             `强弱格局：${foundation.object.directionCard.powerMap}`,
+            `母题复合：${(foundation.object.directionCard.motifs ?? []).join("、")}`,
+            `物件钩：${(foundation.object.directionCard.objectHooks ?? []).map((o) => `${o.name}（${o.chain}）`).join("；")}`,
+            `色彩编码：${foundation.object.directionCard.colorCode ?? ""}`,
             "",
             "===== 人物小传 =====",
             JSON.stringify(foundation.object.characters, null, 2),
+            "",
+            "===== 全剧集纲（剧本必须落在集纲轨道上） =====",
+            `大期待：${foundation.object.outline.expectation}`,
+            `框架：${foundation.object.outline.framework}`,
+            `核心梗：${foundation.object.outline.coreGimmick}`,
+            JSON.stringify(foundation.object.outline.beats, null, 2),
             "",
             analysisBlock,
             redBlock ? `\n${redBlock}` : "",
@@ -631,8 +756,9 @@ export const pipelineRouter = createRouter({
         const pack: ConceptScriptPack = {
           conceptId: input.conceptId,
           logline: foundation.object.logline,
-          directionCard: foundation.object.directionCard,
-          characters: foundation.object.characters,
+          directionCard: foundation.object.directionCard as DirectionCard,
+          characters: foundation.object.characters as CharacterBio[],
+          outline: foundation.object.outline as ConceptScriptPack["outline"],
           episodes: scriptObj.object.episodes as EpisodeScript[],
           promoClips: scriptObj.object.promoClips,
           status: "done",
@@ -701,6 +827,11 @@ export const pipelineRouter = createRouter({
             "",
             EVAL_OUTPUT_FORMAT,
             "",
+            "【小黑DNA 判档尺子（语料实证标准，判档时逐条对照）】",
+            DNA_EVAL,
+            "",
+            "判档重点核查：①第 1 集四层钩是否齐全（3 秒视觉钩/30 秒信息钩/60 秒金钩/集尾痛点钩）；②每集是否有集尾钩、体量是否符合 2.2 场/集约 20 行台词；③英文台词句长是否贴近 5.5 词/句、回合制对白、赛道术语群是否撒够；④角色首登场是否有【字幕】身份卡、集尾是否走完三板斧；⑤人物是否都有四态弧线（含反派）；⑥物件钩是否在剧本里完成当前链条动作；⑦VO 占比是否符合受众（女频 10-30%，男频 <10%）。不符合的按层级计入阻挡项或优化项。",
+            "",
             LOCALIZATION_RULES,
             "（质检时若发现中式人名/称谓/制度/场景，计入阻挡项，要求改成欧美对应物。）",
             "",
@@ -708,12 +839,13 @@ export const pipelineRouter = createRouter({
             concept?.keptExpectation ? `方案锁定的核心期待（剧本必须兑现它）：${concept.keptExpectation}` : "",
             "【换皮质检红线】若发现剧本把核心期待改写/漂移了（而不是只换元素外皮——黑手党/狼人/霸总这类题材包装可以换，先婚后爱/复仇打脸/身份错位这类期待结构不能换），计为阻挡项，明确指出漂移点并要求改回锁定期待。",
             "",
-            `===== 剧本包（方向卡 + ${pack.characters?.length ?? 0} 个人物 + ${pack.episodes.length} 集连贯 + ${pack.promoClips.length} 段投流素材） =====`,
+            `===== 剧本包（方向卡 + ${pack.characters?.length ?? 0} 个人物 + ${pack.outline ? `集纲 ${pack.outline.beats.length} 条 + ` : ""}${pack.episodes.length} 集连贯 + ${pack.promoClips.length} 段投流素材） =====`,
             JSON.stringify(
               {
                 logline: pack.logline,
                 directionCard: pack.directionCard,
                 characters: pack.characters,
+                outline: pack.outline,
                 episodes: pack.episodes,
                 promoClips: pack.promoClips,
               },

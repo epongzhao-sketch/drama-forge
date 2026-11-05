@@ -28,7 +28,9 @@ function cleanNote(zh: string): string {
 function formatBeat(b: ScriptBeat): string {
   switch (b.type) {
     case "dialogue":
-      return `${b.character ?? "？"}${b.mood ? `(${b.mood})` : ""}: "${b.en ?? ""}"（${b.zh}）`;
+      return b.isVo
+        ? `${b.character ?? "？"} (vo): "${b.en ?? ""}"（${b.zh}）`
+        : `${b.character ?? "？"}${b.mood ? `(${b.mood})` : ""}: "${b.en ?? ""}"（${b.zh}）`;
     case "caption":
       return `【字幕: ${b.en ?? ""}】（${b.zh}）`;
     case "note":
@@ -50,9 +52,9 @@ export function formatScript(s: EpisodeScript): string {
   return lines.join("\n");
 }
 
-/** 是否为旧版格式的剧本包（英美场景头 + 逐条双语 beat），需要重新产出 */
-export function isLegacyPack(pack: { directionCard?: unknown; characters?: unknown }): boolean {
-  return !pack.directionCard || !pack.characters;
+/** 是否为旧版格式的剧本包（无方向卡/人物小传/集纲），需要重新产出 */
+export function isLegacyPack(pack: { directionCard?: unknown; characters?: unknown; outline?: unknown }): boolean {
+  return !pack.directionCard || !pack.characters || !pack.outline;
 }
 
 function BeatLine({ b }: { b: ScriptBeat }) {
@@ -61,10 +63,14 @@ function BeatLine({ b }: { b: ScriptBeat }) {
       <div className="flex gap-2 pl-3">
         <span className="w-24 shrink-0 pt-0.5 text-right text-xs font-semibold text-foreground/80">
           {b.character}
-          {b.mood && <span className="block text-[10px] font-normal text-muted-foreground">({b.mood})</span>}
+          {b.isVo ? (
+            <span className="block text-[10px] font-normal italic text-primary/80">(vo)</span>
+          ) : (
+            b.mood && <span className="block text-[10px] font-normal text-muted-foreground">({b.mood})</span>
+          )}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-script text-[15px] leading-6">&ldquo;{b.en}&rdquo;</p>
+          <p className={`font-script text-[15px] leading-6 ${b.isVo ? "italic text-foreground/75" : ""}`}>&ldquo;{b.en}&rdquo;</p>
           <p className="mt-0.5 text-[13px] leading-6 text-muted-foreground">（{b.zh}）</p>
         </div>
       </div>

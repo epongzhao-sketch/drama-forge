@@ -18,8 +18,9 @@ export interface StoredSourceFile {
   dataB64?: string;
 }
 
-/** AI 拆解结果（V38.5：核心期待 × 元素 强制分离） */
+/** AI 拆解结果（小黑DNA 六板块模板：基础信息→四层钩→付费墙→人物四态→换皮方法论→集纲） */
 export interface AnalysisResult {
+  // —— 板块 1：基础信息 ——
   dramaType: string;
   coreExpectation: string;
   elements: string[];
@@ -28,11 +29,25 @@ export interface AnalysisResult {
   protagonist: string;
   antagonist: string;
   coreConflict: string;
+  // —— 板块 2：四层钩拆解（DNA：第 1 集四层钩缺一不可） ——
   hookRhythm: string;
   hookTypes: string[];
+  hook4?: { visual3s: string; info30s: string; golden60s: string; epEndPain: string };
+  openingSkeleton?: string; // 冷开场闪回式 / VO 自我介绍式（含为何适配该赛道）
+  // —— 板块 3：付费墙 ——
   paywallPattern: string;
+  paywallTable?: { ep: string; event: string; intensity: number }[];
+  beatDensity?: string; // 卡点密度曲线（低开高走，每 5 集一个台阶）
+  // —— 板块 4：人物四态弧线（起点→转折→高潮→终点，各绑情绪关键词） ——
+  arcs?: { character: string; start: string; turn: string; climax: string; end: string }[];
+  emotionCurve5?: string; // 情绪 5 段式：隐忍→蒙冤→觉醒→翻盘→收束
+  // —— 红标段 & 迁移 ——
   redSegmentTraits: { quote: string; trait: string }[];
   transferableElements: string[];
+  // —— 板块 5：换皮方法论 ——
+  motifs?: string[];         // 母题库复合拆解（如 重生复仇+调包+隐藏身份）
+  objectHooks?: string[];    // 贯穿物件钩（伏笔—羞辱—反转认亲全链条）
+  reskinGate?: { skeleton: string; adaptMotifs: string; cultureFit: string }; // 换皮三关
   marketFit: string;
 }
 
@@ -112,6 +127,9 @@ export interface DirectionCard {
   mastermind?: string;    // 真正的幕后反派及其盘算，可无
   breakingPoint: string;  // 「不得不破戒」的触发点
   powerMap: string;       // 强弱格局：女主真实/表面地位、男主、渣夫、反派相对位置
+  motifs?: string[];      // DNA：本剧 = 哪 2-4 个成熟母题的复合
+  objectHooks?: { name: string; chain: string }[]; // DNA：2-3 个贯穿物件钩 + 伏笔—羞辱—反转认亲链条
+  colorCode?: string;     // DNA：赛道主色情绪编码（如 狼人=金+银，霸总=冷灰+品牌金）
 }
 
 /** 人物小传 */
@@ -122,27 +140,29 @@ export interface CharacterBio {
   age?: string;
   realIdentity?: string;  // 真实身份
   coverIdentity?: string; // 表面身份
+  captionCard?: string;   // DNA：首登场【字幕】身份卡（英文+中文对照，关系型标关系）
   backstory?: string;     // 前史
   personality: string;    // 性格
   desire?: string;        // 欲望
   weakness?: string;      // 弱点
   weapon?: string;        // 不暴露身份时的武器 / 筹码
-  arc?: string;           // 弧光
+  arc?: string;           // 弧光（兼容旧格式：从…到…）
+  arc4?: { start: string; turn: string; climax: string; end: string }; // DNA 四态弧线，各绑情绪关键词
   powerPosition?: string; // 强弱定位
   villainCheck?: string;  // 反派三查（持续动机/不蠢/量级，仅反派）
 }
 
-/**
- * 剧本节拍：中文短剧工作稿格式
+/** 剧本节拍：中文短剧工作稿格式
  * action   = ▲ 动作行（zh 中文描述，可视化）
- * dialogue = 角色(mood): "en"（zh 中文翻译）
- * caption  = 【字幕: en】（zh）
+ * dialogue = 角色(mood): "en"（zh 中文翻译）；isVo=true 时为 VO 内心独白
+ * caption  = 【字幕: en】（zh）——角色首登场身份卡/金额/反转词大卡
  * note     = 【zh】（如 闪切 / 特效: 黑场）
  */
 export interface ScriptBeat {
   type: "action" | "dialogue" | "caption" | "note";
   character?: string;  // dialogue：角色中文名
   mood?: string;       // dialogue：情绪/状态提示（压低声音，郑重）
+  isVo?: boolean;      // dialogue：VO 内心独白标记（女频 10-30%，男频 <10%）
   en?: string;         // dialogue/caption 的英文（地道美式）
   zh: string;          // action=动作行；dialogue=台词中文；caption=字幕中文；note=说明
 }
@@ -200,12 +220,27 @@ export interface PromoClip {
   hookLineZh: string;       // 金句中文
 }
 
-/** 一个入选换皮方案的完整产出包：方向卡 + 人物小传 + 3~5 集连贯剧本 + 2 集不连贯投流素材 */
+/** 逐集集纲（DNA 拆剧模板板块 6：钩子/剧情/集尾悬念） */
+export interface OutlineBeat {
+  epNo: number;
+  hook: string;        // 本集钩子（开场承接）
+  plot: string;        // 剧情一句话
+  cliffhanger: string; // 集尾悬念（台词中断/表情定格/新威胁登场）
+  paywall?: boolean;   // 是否付费墙位置（EP5/12/24/38/45）
+}
+
+/** 一个入选换皮方案的完整产出包：方向卡 + 人物小传 + 全剧集纲 + 3~5 集连贯剧本 + 2 集不连贯投流素材 */
 export interface ConceptScriptPack {
   conceptId: string;
   logline: string;                 // 本方案一句话卖点
   directionCard: DirectionCard;    // 方向卡
   characters: CharacterBio[];      // 人物小传
+  outline?: {
+    expectation: string;           // 大期待（一句话锁死全剧）
+    framework: string;             // 框架（分型骨架 + 情绪 5 段式落位）
+    coreGimmick: string;           // 核心梗
+    beats: OutlineBeat[];          // 逐集集纲（至少前 10 集，尽量覆盖全剧关键节点）
+  };
   episodes: EpisodeScript[];       // 3~5 集连贯剧本（本身即可投流）
   promoClips: PromoClip[];         // 2 集不连贯投流素材（完整单集剧本）
   status: "pending" | "generating" | "done" | "error";

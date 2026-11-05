@@ -25,6 +25,8 @@ export function AnalysisView({
   onDone: () => void;
 }) {
   const runMut = trpc.pipeline.runAnalysis.useMutation({ onSuccess: onDone });
+  // 旧版拆解报告（小黑DNA 升级前）没有六板块字段 → 提示重新拆解
+  const isLegacy = !!analysis && !analysis.hook4;
 
   if (!analysis) {
     return (
@@ -69,9 +71,14 @@ export function AnalysisView({
           className="h-9 gap-1.5"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${runMut.isPending ? "animate-spin" : ""}`} />
-          {runMut.isPending ? "拆解中…" : "重新拆解"}
+          {runMut.isPending ? "拆解中…" : isLegacy ? "重新拆解（小黑DNA版）" : "重新拆解"}
         </Button>
       </div>
+      {isLegacy && (
+        <p className="border border-primary/40 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+          这份报告是小黑DNA 升级前的旧版——重新拆解后可获得六板块完整结构：EP1 四层钩拆解 / 付费墙位置表 / 人物四态弧线 / 母题复合与物件钩 / 换皮三关。
+        </p>
+      )}
       {runMut.error && <ErrorBox message={runMut.error.message} />}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -113,10 +120,134 @@ export function AnalysisView({
 
       <Field label="核心冲突">{analysis.coreConflict}</Field>
 
+      {analysis.hook4 && (
+        <div className="border border-border bg-card/60 px-4 py-3.5">
+          <p className="mono-label text-[10px]">EP1 四层钩拆解 · DNA 黄金开局</p>
+          <div className="mt-3 space-y-2.5">
+            {(
+              [
+                ["前 3 秒 · 视觉钩", analysis.hook4.visual3s],
+                ["前 30 秒 · 信息钩", analysis.hook4.info30s],
+                ["前 60 秒 · 金钩", analysis.hook4.golden60s],
+                ["集尾 · 痛点钩", analysis.hook4.epEndPain],
+              ] as const
+            ).map(([label, text], i) => (
+              <div key={i} className="flex gap-3 text-sm">
+                <span className="mono-label mt-0.5 w-28 shrink-0 text-[10px] text-primary">{label}</span>
+                <span className="leading-relaxed text-foreground/90">{text}</span>
+              </div>
+            ))}
+          </div>
+          {analysis.openingSkeleton && (
+            <p className="mt-2.5 border-t border-border pt-2.5 text-xs text-muted-foreground">
+              开局骨架：{analysis.openingSkeleton}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="钩子节奏">{analysis.hookRhythm}</Field>
         <Field label="付费卡点规律">{analysis.paywallPattern}</Field>
       </div>
+
+      {analysis.paywallTable && analysis.paywallTable.length > 0 && (
+        <Field label="付费墙位置表（DNA：每墙 ≥9/10 大情绪点）">
+          <div className="space-y-1.5">
+            {analysis.paywallTable.map((w, i) => (
+              <div key={i} className="flex items-center gap-3 text-sm">
+                <span className="mono-label w-12 shrink-0 text-[10px] text-primary">{w.ep}</span>
+                <span className="flex-1">{w.event}</span>
+                <span
+                  className={`mono-label px-1.5 py-0.5 text-[10px] ${
+                    w.intensity >= 9
+                      ? "bg-[hsl(var(--mint))]/10 text-[hsl(var(--mint))]"
+                      : "bg-destructive/10 text-destructive"
+                  }`}
+                >
+                  {w.intensity}/10
+                </span>
+              </div>
+            ))}
+          </div>
+          {analysis.beatDensity && (
+            <p className="mt-2 border-t border-border pt-2 text-xs text-muted-foreground">卡点密度：{analysis.beatDensity}</p>
+          )}
+        </Field>
+      )}
+
+      {analysis.arcs && analysis.arcs.length > 0 && (
+        <Field label="人物四态弧线（起点→转折→高潮→终点，各绑情绪关键词）">
+          <div className="space-y-3">
+            {analysis.arcs.map((arc, i) => (
+              <div key={i}>
+                <p className="text-xs font-medium text-foreground">{arc.character}</p>
+                <div className="mt-1.5 grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-4">
+                  {(
+                    [
+                      ["起点", arc.start],
+                      ["转折", arc.turn],
+                      ["高潮", arc.climax],
+                      ["终点", arc.end],
+                    ] as const
+                  ).map(([label, text]) => (
+                    <div key={label} className="border border-border bg-background/60 px-2 py-1.5">
+                      <span className="mono-label text-[9px] text-primary">{label}</span>
+                      <p className="mt-0.5 leading-snug">{text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {analysis.emotionCurve5 && (
+            <p className="mt-2.5 border-t border-border pt-2 text-xs text-muted-foreground">
+              情绪 5 段式：{analysis.emotionCurve5}
+            </p>
+          )}
+        </Field>
+      )}
+
+      {(analysis.motifs?.length || analysis.objectHooks?.length || analysis.reskinGate) && (
+        <Field label="换皮方法论 · 母题与物件钩">
+          {analysis.motifs && analysis.motifs.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mono-label text-[10px] text-muted-foreground">母题复合：</span>
+              {analysis.motifs.map((m, i) => (
+                <span key={i} className="border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                  {m}
+                </span>
+              ))}
+            </div>
+          )}
+          {analysis.objectHooks && analysis.objectHooks.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm">
+              {analysis.objectHooks.map((o, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="mono-label mt-0.5 text-[10px] text-primary">OBJ</span>
+                  <span>{o}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {analysis.reskinGate && (
+            <div className="mt-2.5 space-y-1.5 border-t border-border pt-2.5 text-xs">
+              {(
+                [
+                  ["第一关 · 骨架成立", analysis.reskinGate.skeleton],
+                  ["第二关 · 融梗方法", analysis.reskinGate.adaptMotifs],
+                  ["第三关 · 文化适配", analysis.reskinGate.cultureFit],
+                ] as const
+              ).map(([label, text]) => (
+                <p key={label}>
+                  <span className="mono-label mr-2 text-[10px] text-primary">{label}</span>
+                  <span className="text-muted-foreground">{text}</span>
+                </p>
+              ))}
+            </div>
+          )}
+        </Field>
+      )}
 
       <Field label="钩型清单">
         <div className="flex flex-wrap gap-1.5">
