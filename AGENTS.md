@@ -55,6 +55,21 @@ npm start          # 生产运行（需 NODE_ENV=production 才监听端口）
 
 本地开发登录：OAuth 应用白名单一般只登记线上域名，localhost 回调换 token 会报 Invalid redirect_uri。开发环境直接访问 `http://localhost:3000/api/dev-login` 即可免 OAuth 登录（用 OWNER_UNION_ID 签发会话，自动 admin；仅 dev + localhost 可用，生产构建不含此路由）。
 
+## 维护分工（重要：先读懂这条再开工）
+
+本项目采用「Kimi Code 开发 + Kimi 发布」的双层模式：
+
+```
+Kimi Code（你）：日常开发 —— 改代码 → npm run check / build 验证 → 提交并推送到 GitHub 仓库
+Kimi（站长侧）：发布 —— 用户说"同步 GitHub 最新代码"时，由 Kimi 拉取、构建、存版本，kimi.site 线上更新
+```
+
+- **你没有部署通道**：线上实例（fpfpvr42xwsdq.kimi.site）跑在 Kimi 平台的版本系统里（托管、数据库、OAuth 凭证都在平台侧），改完代码无法自行上线——你的工作边界是「把验证过的代码推到 GitHub 仓库」。
+- **标准迭代流程**：开发 → `npm run check` 零错误 → `npm run build` 通过 → 本地冒烟（`NODE_ENV=production node dist/boot.js` + curl 首页）→ commit & push → 提醒用户「让 Kimi 同步发布」。
+- **推送入口**：`git remote add origin https://github.com/epongzhao-sketch/drama-forge.git && git push`（仓库已建好，含 README/AGENTS.md；首次推送会把完整历史带上）。
+- **数据库红线**：`.env` 里的 `DATABASE_URL` 指向**线上 TiDB 生产数据**。日常开发务必切换成本地 MySQL（交接包 docker-compose.yml 自带），绝不在生产库上跑实验性迁移。
+- **若用户决定迁出 Kimi 平台自托管**：用交接包里的 Dockerfile + docker-compose.yml，那时你将获得完整部署权（服务器+数据库都归你管），本分工即失效。
+
 ## 血泪教训（勿重蹈）
 
 1. **部署模型**：平台 zip 只带 `bootstrap + dist/ + .env + package.json`，无 node_modules——后端必须 esbuild 单文件打包成 `dist/boot.js`，绝不能换成裸 tsc。`.dockerignore` 里**不能排除 dist**（会导致部署快照不变）。
