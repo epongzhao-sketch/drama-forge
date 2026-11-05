@@ -47,6 +47,13 @@ export default function Login() {
           >
             使用 Kimi 账号登录
           </Button>
+          {import.meta.env.DEV && (
+            <a href="/api/dev-login" className="mt-2.5 block">
+              <Button variant="outline" className="h-11 w-full text-sm">
+                本地开发登录（免 OAuth，仅开发环境显示）
+              </Button>
+            </a>
+          )}
           <p className="mono-label mt-4 text-[9px]">登录后即可保存你的复刻项目库</p>
         </div>
       </div>
