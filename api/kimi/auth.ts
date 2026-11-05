@@ -93,7 +93,7 @@ export function createOAuthCallbackHandler() {
     }
 
     try {
-      const redirectUri = atob(state);
+      const redirectUri = atob(state).trim();
       const tokenResp = await exchangeAuthCode(code, redirectUri);
       const { userId } = await verifyAccessToken(tokenResp.access_token);
       const userProfile = await kimiUsers.getProfile(tokenResp.access_token);
