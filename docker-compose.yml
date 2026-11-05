@@ -1,0 +1,42 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-me-root}
+      MYSQL_DATABASE: drama_forge
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # 一次性任务：初始化/同步数据表（等价于 npm run db:push）
+  migrate:
+    build:
+      context: .
+      target: build
+    command: npx drizzle-kit push
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      args:
+        VITE_KIMI_AUTH_URL: ${VITE_KIMI_AUTH_URL}
+        VITE_APP_ID: ${VITE_APP_ID}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:
