@@ -12,6 +12,9 @@ export default defineConfig({
     inspectAttr(), react()],
   server: {
     port: 3000,
+    // 通过预览代理（如 Kimi Code 桌面端预览 *.proxy.internal）访问 dev server 时，
+    // Host 头不是 localhost，Vite 默认拒绝（Blocked request），这里放行该类代理域名
+    allowedHosts: [".proxy.internal"],
   },
   resolve: {
     alias: {
