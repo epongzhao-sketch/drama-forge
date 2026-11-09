@@ -1,6 +1,8 @@
 // 剧本渲染与导出的共享组件：中文短剧工作稿格式
 // 场景头「集-场  日/夜  内/外  地点」+ 出场人物；▲ 动作行；台词 角色(情绪): "EN"（中文）；【字幕】【特效】
-import type { EpisodeScript, ScriptScene, ScriptBeat } from "@contracts/pipeline";
+import { useState } from "react";
+import type { EpisodeScript, ScriptScene, ScriptBeat, BeatMirror } from "@contracts/pipeline";
+import { GitCompareArrows } from "lucide-react";
 
 const CN_NUM = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
 
@@ -127,6 +129,43 @@ export function EpisodeDoc({ script }: { script: EpisodeScript }) {
           <SceneBlock key={sc.sceneNo} epNo={script.epNo} sc={sc} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** 节拍镜像对照：新剧本集逐拍对齐原作的哪个节拍（左原作功能 / 右新剧落法） */
+export function BeatMirrorView({ mirror }: { mirror?: BeatMirror }) {
+  const [open, setOpen] = useState(false);
+  if (!mirror || mirror.mapping.length === 0) return null;
+  return (
+    <div className="border border-primary/30 bg-primary/5">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs transition-colors hover:bg-primary/10"
+      >
+        <GitCompareArrows className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <span className="font-medium text-primary">
+          节拍镜像对照 · 复刻原作 EP{mirror.sourceEpNo}（{mirror.mapping.length} 拍对齐）
+        </span>
+        <span className="mono-label ml-auto text-[10px] text-muted-foreground">{open ? "收起" : "展开"}</span>
+      </button>
+      {open && (
+        <div className="space-y-1.5 border-t border-primary/20 px-3.5 py-3">
+          {mirror.mapping.map((m, i) => (
+            <div key={i} className="grid gap-1.5 text-xs sm:grid-cols-2">
+              <p className="border border-border bg-card/60 px-2.5 py-1.5 leading-relaxed text-muted-foreground">
+                <span className="mono-label mr-1.5 text-[9px]">原作</span>
+                {m.sourceBeat}
+              </p>
+              <p className="border border-primary/30 bg-card/60 px-2.5 py-1.5 leading-relaxed text-foreground/85">
+                <span className="mono-label mr-1.5 text-[9px] text-primary">新剧</span>
+                {m.newBeat}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

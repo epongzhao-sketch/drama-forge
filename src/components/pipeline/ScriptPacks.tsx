@@ -4,7 +4,7 @@ import { trpc } from "@/providers/trpc";
 import type { RemapPool, ConceptScriptPack, PromoClip, DirectionCard, CharacterBio } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
-import { EpisodeDoc, SceneBlock, formatScript, isLegacyPack } from "@/components/pipeline/ScriptDoc";
+import { EpisodeDoc, SceneBlock, BeatMirrorView, formatScript, isLegacyPack } from "@/components/pipeline/ScriptDoc";
 import { Clapperboard, Copy, Download, Scissors, Check, Lock, Users, ListOrdered } from "lucide-react";
 
 function DirectionCardView({ card }: { card: DirectionCard }) {
@@ -189,6 +189,7 @@ function PromoClipDoc({ clip }: { clip: PromoClip }) {
           <p className="font-script mt-0.5 text-sm font-medium">&ldquo;{clip.hookLine}&rdquo;</p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">（{clip.hookLineZh}）</p>
         </div>
+        <BeatMirrorView mirror={clip.episode.mirror} />
       </div>
     </div>
   );
@@ -306,7 +307,12 @@ function PackView({ pack }: { pack: ConceptScriptPack }) {
       <CharacterBiosView characters={pack.characters} />
       {pack.outline && <OutlineView outline={pack.outline} />}
       <p className="mono-label text-[10px] text-primary">Episodes · 连贯剧本（{pack.episodes.length} 集）</p>
-      {pack.episodes.map((ep) => <EpisodeDoc key={ep.epNo} script={ep} />)}
+      {pack.episodes.map((ep) => (
+        <div key={ep.epNo} className="space-y-2">
+          <EpisodeDoc script={ep} />
+          <BeatMirrorView mirror={ep.mirror} />
+        </div>
+      ))}
       <p className="mono-label flex items-center gap-1.5 text-[10px] text-destructive">
         <Scissors className="h-3 w-3" /> Promo Clips · 2 集不连贯投流素材
       </p>

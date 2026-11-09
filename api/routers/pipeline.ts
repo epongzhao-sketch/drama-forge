@@ -91,6 +91,28 @@ const analysisSchema = z.object({
     })
     .describe("换皮三关自检"),
   marketFit: z.string().describe("目标市场适配要点"),
+  beatMap: z
+    .array(
+      z.object({
+        epNo: z.number().int().describe("样本集号"),
+        paywall: z.boolean().optional().describe("该集是否付费卡点集"),
+        beats: z
+          .array(
+            z.object({
+              position: z.string().describe("节拍位置：开场 / 前段 / 中段 / 后段 / 集尾"),
+              type: z.string().describe("节拍功能：视觉钩 / 信息钩 / 受辱 / 隐忍 / 反转 / 打脸 / 身份危机 / 新威胁登场 等"),
+              summary: z.string().describe("该节拍发生了什么——功能级概括，禁止抄录原文台词"),
+              intensity: z.number().min(1).max(10).describe("情绪强度 1-10"),
+            }),
+          )
+          .min(3)
+          .max(8)
+          .describe("本集节拍序列，按时间顺序 3-8 拍"),
+        cliffhangerType: z.string().describe("集尾悬念类型：台词中断型 / 表情定格型 / 新威胁登场型"),
+      }),
+    )
+    .min(1)
+    .describe("逐集节拍镜像表：样本中可识别出的每一集都拆成节拍序列——这是后续节拍级复刻的骨架依据"),
 });
 
 const conceptSchema = z.object({
@@ -137,6 +159,21 @@ const episodeScriptSchema = z.object({
   title: z.string().describe("英文暂名"),
   titleZh: z.string().describe("中文暂名"),
   scenes: z.array(scriptSceneSchema),
+  mirror: z
+    .object({
+      sourceEpNo: z.number().int().describe("本集镜像的原作集号"),
+      mapping: z
+        .array(
+          z.object({
+            sourceBeat: z.string().describe("原作该节拍的功能概括（引自逐集节拍镜像表）"),
+            newBeat: z.string().describe("新剧在同一节拍位置的落法——同等功能、同等情绪强度，事件与表达全新"),
+          }),
+        )
+        .min(3)
+        .describe("逐节拍对照：与原作对应集的节拍序列一一对齐"),
+    })
+    .optional()
+    .describe("节拍镜像对照：拆解报告提供了 beatMap 时必填"),
 });
 
 const directionCardSchema = z.object({
@@ -490,6 +527,7 @@ export const pipelineRouter = createRouter({
             "- paywallTable 把样本里能识别出的卡点列成表并打情绪强度分；beatDensity 描述卡点密度曲线。",
             "- arcs 给每个主要人物（含反派）写四态弧线，每态绑一个情绪关键词；emotionCurve5 把情绪 5 段式映射到样本的集数区间。",
             "- motifs 拆解样本的母题复合构成；objectHooks 找出贯穿物件钩；reskinGate 做换皮三关自检（骨架/融梗/文化适配），这是后续换皮方案的依据。",
+            "- beatMap 逐集节拍镜像表：把样本中能识别出的每一集拆成按时间顺序的节拍序列（每集 3-8 拍）。每个节拍只记三件事——位置（开场/前段/中段/后段/集尾）、功能（视觉钩/受辱/反转/打脸/身份危机…）、内容的功能级概括。summary 写「这一拍在节奏上起什么作用+发生了什么类型的事件」，**禁止抄录原文台词**；每拍打情绪强度分（1-10），付费卡点集标 paywall=true，集尾标注悬念类型。这张表是后续逐节拍镜像复刻的依据，拆得越准新剧节奏越像原作。",
             "",
             LOCALIZATION_RULES,
             "（拆解时若样本里出现中式元素，要在 transferableElements / marketFit 里指出它对应的欧美可迁移形式，而不是原样保留。）",
@@ -641,6 +679,9 @@ export const pipelineRouter = createRouter({
       const analysisBlock = a
         ? `===== 爆款核心期待（全剧主线服务于此） =====\n${a.coreExpectation}\n\n钩子节奏参考：${a.hookRhythm}\n付费卡点规律：${a.paywallPattern}`
         : "";
+      const beatMapBlock = a?.beatMap?.length
+        ? `===== 原作逐集节拍镜像表（新剧必须逐节拍对齐：拍数/顺序/功能/情绪强度一致，内容全部新写） =====\n${JSON.stringify(a.beatMap)}`
+        : "";
       const redBlock = redTexts.length
         ? `===== 已验证的投流爆款素材段（供情绪结构参考，勿照抄） =====\n${redTexts.map((t, i) => `【素材${i + 1}】${t}`).join("\n\n")}`
         : "";
@@ -679,6 +720,7 @@ export const pipelineRouter = createRouter({
             "- framework：写出分型骨架落位（如 女频虐恋=辜负→觉醒→离开→追妻火葬场→加冕）+ 情绪 5 段式分别落在哪几集。",
             "- coreGimmick：本剧最独特最好卖的那个装置。",
             "- beats：前 10 集逐集写全（钩子/剧情/集尾悬念）；之后跳写关键节点——付费墙严格按 EP5/12/24/38/45 布局（如总集数不同则按 10%/25%/50%/75%/90% 位置换算取整），每个付费墙集标 paywall=true 且必须是 ≥9/10 大情绪点；大反转集、大结局前 2 集必须有；总条数控制在 16-24 条。",
+            "- 若提供了原作逐集节拍镜像表：集纲的前若干集（节拍表覆盖的范围）逐集对齐原作的节拍节奏与情绪强度落点——同一集数承担同等功能与强度的节拍，但事件内容全新；超出覆盖范围的集数按同一节奏规律外推。",
             "- 集尾悬念按 DNA 三类收法：台词中断型 / 表情定格型 / 新威胁登场型。",
             "",
             LOCALIZATION_RULES,
@@ -687,6 +729,7 @@ export const pipelineRouter = createRouter({
             conceptBlock,
             "",
             analysisBlock,
+            beatMapBlock ? `\n${beatMapBlock}` : "",
             redBlock ? `\n${redBlock}` : "",
           ].join("\n"),
         });
@@ -710,6 +753,7 @@ export const pipelineRouter = createRouter({
             "5. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
             "6. 物件钩要用起来：方向卡里设计的物件钩在剧本里要完成它当前阶段的链条动作（埋伏笔/羞辱/认亲）。",
             "7. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
+            "8. 【节拍级镜像纪律】若提供了原作逐集节拍镜像表（beatMap）：episodes 第 n 集镜像原作第 n 集——节拍的**数量、顺序、功能、情绪强度曲线**逐拍对齐；但每一拍的具体事件、场景、台词全部用新题材新写，复刻的是节奏骨架与情绪曲线，不是文字表达。每集必须填写 mirror 字段：sourceEpNo=镜像的原作集号，mapping 逐拍写「原作这一拍的功能」→「新剧这一拍的落法」。promoClips 从节拍表里挑情绪强度最高且不在连贯集范围内的两集镜像，mirror 同样必填。",
             "",
             "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
             "- 场景头四要素拆成字段：timeOfDay（日/夜/晨/昏）、intExt（内/外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。闪回直接写进 location（如 树林·闪回）。",
@@ -749,6 +793,7 @@ export const pipelineRouter = createRouter({
             JSON.stringify(foundation.object.outline.beats, null, 2),
             "",
             analysisBlock,
+            beatMapBlock ? `\n${beatMapBlock}` : "",
             redBlock ? `\n${redBlock}` : "",
           ].join("\n"),
         });
@@ -830,12 +875,13 @@ export const pipelineRouter = createRouter({
             "【小黑DNA 判档尺子（语料实证标准，判档时逐条对照）】",
             DNA_EVAL,
             "",
-            "判档重点核查：①第 1 集四层钩是否齐全（3 秒视觉钩/30 秒信息钩/60 秒金钩/集尾痛点钩）；②每集是否有集尾钩、体量是否符合 2.2 场/集约 20 行台词；③英文台词句长是否贴近 5.5 词/句、回合制对白、赛道术语群是否撒够；④角色首登场是否有【字幕】身份卡、集尾是否走完三板斧；⑤人物是否都有四态弧线（含反派）；⑥物件钩是否在剧本里完成当前链条动作；⑦VO 占比是否符合受众（女频 10-30%，男频 <10%）。不符合的按层级计入阻挡项或优化项。",
+            "判档重点核查：①第 1 集四层钩是否齐全（3 秒视觉钩/30 秒信息钩/60 秒金钩/集尾痛点钩）；②每集是否有集尾钩、体量是否符合 2.2 场/集约 20 行台词；③英文台词句长是否贴近 5.5 词/句、回合制对白、赛道术语群是否撒够；④角色首登场是否有【字幕】身份卡、集尾是否走完三板斧；⑤人物是否都有四态弧线（含反派）；⑥物件钩是否在剧本里完成当前链条动作；⑦VO 占比是否符合受众（女频 10-30%，男频 <10%）。不符合的按层级计入阻挡项或优化项。⑧若提供了原作逐集节拍镜像表：逐集核对新剧节拍与原作对应集的功能/顺序/情绪强度曲线是否对齐——脱节的集计入优化项（但核心期待漂移仍属阻挡项）。",
             "",
             LOCALIZATION_RULES,
             "（质检时若发现中式人名/称谓/制度/场景，计入阻挡项，要求改成欧美对应物。）",
             "",
             a?.coreExpectation ? `原爆款核心期待参考：${a.coreExpectation}` : "",
+            a?.beatMap?.length ? `===== 原作逐集节拍镜像表（核查新剧对齐度用） =====\n${JSON.stringify(a.beatMap)}` : "",
             concept?.keptExpectation ? `方案锁定的核心期待（剧本必须兑现它）：${concept.keptExpectation}` : "",
             "【换皮质检红线】若发现剧本把核心期待改写/漂移了（而不是只换元素外皮——黑手党/狼人/霸总这类题材包装可以换，先婚后爱/复仇打脸/身份错位这类期待结构不能换），计为阻挡项，明确指出漂移点并要求改回锁定期待。",
             "",

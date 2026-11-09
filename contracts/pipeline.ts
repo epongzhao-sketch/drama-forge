@@ -18,6 +18,26 @@ export interface StoredSourceFile {
   dataB64?: string;
 }
 
+/** 原作逐集节拍镜像表（AI 拆解产出）：每集的节拍序列 = 位置 + 功能 + 内容概括 + 情绪强度
+ * 纪律：summary 是功能级概括，不是原文台词抄录——镜像的是节奏与情绪曲线，不是具体表达 */
+export interface BeatMapEpisode {
+  epNo: number;
+  paywall?: boolean; // 该集是否付费卡点
+  beats: {
+    position: string; // 节拍位置：开场 / 前段 / 中段 / 后段 / 集尾
+    type: string;     // 节拍功能：视觉钩 / 受辱 / 隐忍 / 反转 / 打脸 / 身份危机 / 信息钩…
+    summary: string;  // 该节拍发生了什么（功能概括，不抄原文）
+    intensity: number; // 情绪强度 1-10
+  }[];
+  cliffhangerType: string; // 集尾悬念类型：台词中断 / 表情定格 / 新威胁登场
+}
+
+/** 新剧单集与原作节拍的镜像对照（随剧本包产出） */
+export interface BeatMirror {
+  sourceEpNo: number; // 镜像的原作集号
+  mapping: { sourceBeat: string; newBeat: string }[]; // 原作节拍功能 → 新剧该节拍的落法（全新表达）
+}
+
 /** AI 拆解结果（小黑DNA 六板块模板：基础信息→四层钩→付费墙→人物四态→换皮方法论→集纲） */
 export interface AnalysisResult {
   // —— 板块 1：基础信息 ——
@@ -49,6 +69,8 @@ export interface AnalysisResult {
   objectHooks?: string[];    // 贯穿物件钩（伏笔—羞辱—反转认亲全链条）
   reskinGate?: { skeleton: string; adaptMotifs: string; cultureFit: string }; // 换皮三关
   marketFit: string;
+  // —— 板块 6：逐集节拍镜像表（节拍级复刻的骨架依据） ——
+  beatMap?: BeatMapEpisode[];
 }
 
 /** 爆款桥段移植：红标段 → 新剧目标集 的换算映射 */
@@ -183,6 +205,7 @@ export interface EpisodeScript {
   title: string;      // 英文暂名
   titleZh: string;    // 中文暂名
   scenes: ScriptScene[];
+  mirror?: BeatMirror; // 与原作对应集的节拍镜像对照（新版产出才有）
 }
 
 /** 换皮方案（AI 一次产出 10 个，人工粗选 3~5 个进入剧本产出） */

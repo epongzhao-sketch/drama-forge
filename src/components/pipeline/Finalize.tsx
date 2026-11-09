@@ -5,7 +5,7 @@ import type { RemapPool, ConceptScriptPack, EvalReport } from "@contracts/pipeli
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
 import { EvalReportView } from "@/components/pipeline/EvalReportView";
-import { EpisodeDoc, SceneBlock, isLegacyPack } from "@/components/pipeline/ScriptDoc";
+import { EpisodeDoc, SceneBlock, BeatMirrorView, isLegacyPack } from "@/components/pipeline/ScriptDoc";
 import { ShieldCheck, Trophy } from "lucide-react";
 
 export function Finalize({
@@ -89,7 +89,12 @@ export function Finalize({
             </div>
           ) : (
             <div className="space-y-4">
-              {activePack.episodes.map((ep) => <EpisodeDoc key={ep.epNo} script={ep} />)}
+              {activePack.episodes.map((ep) => (
+                <div key={ep.epNo} className="space-y-2">
+                  <EpisodeDoc script={ep} />
+                  <BeatMirrorView mirror={ep.mirror} />
+                </div>
+              ))}
               <p className="mono-label text-[10px] text-destructive">投流素材 · 完整单集 · 不连贯</p>
               {activePack.promoClips.map((c) => (
                 <div key={c.id} className="border border-destructive/40 bg-destructive/5 px-4 py-4">
@@ -107,6 +112,9 @@ export function Finalize({
                     <p className="mono-label text-[9px] text-destructive">Hook Line · 大字幕金句</p>
                     <p className="font-script mt-0.5 text-sm">&ldquo;{c.hookLine}&rdquo;</p>
                     <p className="mt-0.5 text-[13px] text-muted-foreground">（{c.hookLineZh}）</p>
+                  </div>
+                  <div className="mt-3">
+                    <BeatMirrorView mirror={c.episode.mirror} />
                   </div>
                 </div>
               ))}

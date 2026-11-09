@@ -25,8 +25,8 @@ export function AnalysisView({
   onDone: () => void;
 }) {
   const runMut = trpc.pipeline.runAnalysis.useMutation({ onSuccess: onDone });
-  // 旧版拆解报告（小黑DNA 升级前）没有六板块字段 → 提示重新拆解
-  const isLegacy = !!analysis && !analysis.hook4;
+  // 旧版拆解报告没有六板块字段 / 逐集节拍镜像表 → 提示重新拆解
+  const isLegacy = !!analysis && (!analysis.hook4 || !analysis.beatMap);
 
   if (!analysis) {
     return (
@@ -76,7 +76,7 @@ export function AnalysisView({
       </div>
       {isLegacy && (
         <p className="border border-primary/40 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-          这份报告是小黑DNA 升级前的旧版——重新拆解后可获得六板块完整结构：EP1 四层钩拆解 / 付费墙位置表 / 人物四态弧线 / 母题复合与物件钩 / 换皮三关。
+          这份报告是旧版——重新拆解后可获得六板块完整结构（EP1 四层钩拆解 / 付费墙位置表 / 人物四态弧线 / 母题复合与物件钩 / 换皮三关）+ 逐集节拍镜像表（节拍级复刻的骨架依据）。
         </p>
       )}
       {runMut.error && <ErrorBox message={runMut.error.message} />}
@@ -281,6 +281,47 @@ export function AnalysisView({
       </Field>
 
       <Field label="目标市场适配">{analysis.marketFit}</Field>
+
+      {analysis.beatMap && analysis.beatMap.length > 0 && (
+        <div className="border border-primary/50 bg-card/60 px-4 py-3.5">
+          <p className="mono-label text-[10px] text-primary">
+            Beat Map · 逐集节拍镜像表（新剧将逐拍对齐此节奏骨架）
+          </p>
+          <div className="mt-3 space-y-3">
+            {analysis.beatMap.map((ep) => (
+              <div key={ep.epNo} className="border border-border bg-background/50 px-3 py-2.5">
+                <p className="flex items-center gap-2 text-xs font-semibold">
+                  <span className="mono-label text-[10px] text-primary">EP{ep.epNo}</span>
+                  {ep.paywall && (
+                    <span className="border border-destructive/50 bg-destructive/10 px-1.5 py-0.5 text-[9px] text-destructive">付费卡点</span>
+                  )}
+                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">集尾：{ep.cliffhangerType}</span>
+                </p>
+                <div className="mt-2 space-y-1">
+                  {ep.beats.map((b, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="mono-label w-10 shrink-0 pt-0.5 text-[9px] text-muted-foreground">{b.position}</span>
+                      <span className="shrink-0 border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{b.type}</span>
+                      <span className="min-w-0 flex-1 leading-relaxed text-foreground/85">{b.summary}</span>
+                      <span
+                        className={`mono-label shrink-0 px-1.5 py-0.5 text-[10px] ${
+                          b.intensity >= 9
+                            ? "bg-destructive/10 text-destructive"
+                            : b.intensity >= 7
+                              ? "bg-primary/10 text-primary"
+                              : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {b.intensity}/10
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
