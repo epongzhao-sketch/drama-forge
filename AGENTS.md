@@ -51,7 +51,10 @@ npm run dev        # Vite 开发（前后端同端口 3000）
 npm run check      # 全量类型检查（改完必跑）
 npm run build      # 前端 vite build + esbuild 打包后端为 dist/boot.js
 npm start          # 生产运行（需 NODE_ENV=production 才监听端口）
+npm run healthcheck  # 线上站点一键体检（5 项检查，详见 运维手册.md）
 ```
+
+**防回归纪律**：任何改动必须 `npm run check` 通过 + 本地实测通过后才能 push；push 后提醒用户到 Kimi Desktop 同步部署，部署后跑 `npm run healthcheck` 确认线上无恙。线上故障处置见 `运维手册.md`。
 
 本地开发登录：OAuth 应用白名单一般只登记线上域名，localhost 回调换 token 会报 Invalid redirect_uri。开发环境直接访问 `http://localhost:3000/api/dev-login` 即可免 OAuth 登录（用 OWNER_UNION_ID 签发会话，自动 admin；仅 dev + localhost 可用，生产构建不含此路由）。
 
