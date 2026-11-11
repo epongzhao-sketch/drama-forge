@@ -81,7 +81,7 @@ export default function Workspace() {
         status.selectedCount === 0
           ? { done: false, doneText: "", todo: "剧本包按入选方案产出，请先在「换皮方案」完成粗选", todoStage: "remap" }
           : status.packCount === 0
-            ? { done: false, doneText: "", todo: "选中一个方案，点「产出该方案的剧本包」（每个约 5-10 分钟）" }
+            ? { done: false, doneText: "", todo: "选中一个方案，点「产出该方案的剧本包」——首卡 1~10 集全量产出，约 15-40 分钟，请保持页面打开" }
             : status.packCount < status.selectedCount
               ? { done: true, doneText: `已产出 ${status.packCount}/${status.selectedCount} 个剧本包，可继续产出，也可以直接去定稿`, todo: "" }
               : { done: true, doneText: `${status.packCount} 个剧本包全部产出`, todo: "" },

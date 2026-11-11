@@ -1,4 +1,4 @@
-// 剧本产出阶段：为每个入选方案生成「方向卡 + 人物小传 + 3~5 集连贯剧本 + 2 段不连贯投流素材」
+// 剧本产出阶段：为每个入选方案生成「方向卡 + 人物小传 + 首卡 1~10 集全量连贯剧本（分批产出）+ 2 段不连贯投流素材」
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import type { RemapPool, ConceptScriptPack, PromoClip, DirectionCard, CharacterBio } from "@contracts/pipeline";
@@ -383,7 +383,7 @@ export function ScriptPacks({
               <Button onClick={() => genMut.mutate({ projectId, conceptId: activeId })} disabled={genMut.isPending}>
                 {genMut.isPending ? "正在产出剧本包…" : legacy ? "重新产出（新版格式）" : "产出该方案的剧本包"}
               </Button>
-              {genMut.isPending && <Generating text="先定方向卡与人物小传（约 2-4 分钟），再写连贯剧本与投流素材（约 3-7 分钟）——全程可能 5-10 分钟，请保持页面打开…" />}
+              {genMut.isPending && <Generating text="分四步产出：方向卡+人物小传+集纲（约 2-4 分钟）→ 第 1-5 集 → 第 6-10 集 → 投流素材（每批约 3-10 分钟）——全程可能 15-40 分钟，请保持页面打开…" />}
               {genMut.error && <ErrorBox message={genMut.error.message} />}
             </div>
           )}
@@ -395,7 +395,7 @@ export function ScriptPacks({
                   重新产出
                 </Button>
               </div>
-              {genMut.isPending && <Generating text="重新产出中（方向卡 + 人物小传 + 剧本，全程约 5-10 分钟）…" />}
+              {genMut.isPending && <Generating text="重新产出中（首卡 1~10 集全量 + 投流素材，全程约 15-40 分钟）…" />}
               {genMut.error && <ErrorBox message={genMut.error.message} />}
               <PackView pack={activePack} />
             </>

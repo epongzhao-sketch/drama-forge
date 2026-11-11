@@ -264,10 +264,14 @@ const promoClipSchema = z.object({
   hookLineZh: z.string().describe("金句中文"),
 });
 
-/** 第二步：剧本正文 = 连贯集 + 投流素材 */
-const conceptPackScriptSchema = z.object({
-  episodes: z.array(episodeScriptSchema).min(3).max(5).describe("3~5 集连贯剧本，本身即可投流"),
-  promoClips: z.array(promoClipSchema).length(2).describe("2 集不连贯的投流素材（完整单集剧本）"),
+/** 剧本产出第二步：单批连贯集（每批 ≤5 集，整卡分多批循环产出） */
+const episodeChunkSchema = z.object({
+  episodes: z.array(episodeScriptSchema).min(1).max(5),
+});
+
+/** 剧本产出第三步：投流素材（整卡产出完后单独一批） */
+const promoChunkSchema = z.object({
+  promoClips: z.array(promoClipSchema).length(2),
 });
 
 /** 判档质检报告 */
@@ -315,6 +319,10 @@ function injectRedMarkers(content: string, segs: RedSegment[]): string {
 }
 
 const MAX_SAMPLE_CHARS = 20000;
+
+/** 一卡 = 首卡全量复刻：第 1~10 集逐集完整产出（超过单批上限的集数分批生成） */
+const FIRST_CARD_EPISODES = 10;
+const EPISODES_PER_CHUNK = 5;
 
 async function loadContext(projectId: number) {
   const db = getDb();
@@ -645,7 +653,7 @@ export const pipelineRouter = createRouter({
       return pool;
     }),
 
-  /** 为一个入选方案生成完整剧本包：方向卡 + 人物小传 + 3~5 集连贯剧本 + 2 段不连贯投流素材 */
+  /** 为一个入选方案生成完整剧本包：方向卡 + 人物小传 + 首卡 1~10 集全量连贯剧本 + 2 段不连贯投流素材（一卡集数与批量大小见 FIRST_CARD_EPISODES / EPISODES_PER_CHUNK） */
   generateScriptPack: authedQuery
     .input(z.object({ projectId: z.number(), conceptId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -734,66 +742,143 @@ export const pipelineRouter = createRouter({
           ].join("\n"),
         });
 
-        // 第二步：剧本正文（基于地基与集纲写连贯集 + 投流素材）
-        const scriptObj = await generateObjectStreamed({
+        // 第二步：首卡全量连贯剧本（第 1~cardEpisodes 集，每批 ≤5 集，跨批注入前文梗概保连续）
+        const cardEpisodes = Math.min(FIRST_CARD_EPISODES, pool.totalEpisodes);
+        const foundationCard = foundation.object;
+        const beatsFor = (from: number, to: number) =>
+          foundationCard.outline.beats.filter((b) => b.epNo >= from && b.epNo <= to);
+        const beatMapFor = (from: number, to: number) =>
+          a?.beatMap?.length
+            ? `===== 原作逐集节拍镜像表·本批范围（新剧必须逐节拍对齐：拍数/顺序/功能/情绪强度一致，内容全部新写） =====\n${JSON.stringify(a.beatMap.filter((b) => b.epNo >= from && b.epNo <= to))}`
+            : "";
+        const epDigest = (eps: EpisodeScript[]) =>
+          eps
+            .map((e) => {
+              const first = e.scenes[0]?.beats[0]?.zh ?? "";
+              const last = e.scenes.at(-1)?.beats.at(-1)?.zh ?? "";
+              return `EP${e.epNo}《${e.titleZh}》开场：${first.slice(0, 60)}｜集尾：${last.slice(0, 60)}`;
+            })
+            .join("\n");
+        const directionBlock = [
+          "===== 方向卡 =====",
+          `核心期待：${foundationCard.directionCard.expectation}`,
+          `元素：${foundationCard.directionCard.elements.join("、")}`,
+          `忍的代价（写死）：${foundationCard.directionCard.enduranceCost}`,
+          foundationCard.directionCard.clock ? `时钟：${foundationCard.directionCard.clock}` : "",
+          foundationCard.directionCard.mastermind ? `幕后反派：${foundationCard.directionCard.mastermind}` : "",
+          `不得不破戒的触发点：${foundationCard.directionCard.breakingPoint}`,
+          `强弱格局：${foundationCard.directionCard.powerMap}`,
+          `母题复合：${(foundationCard.directionCard.motifs ?? []).join("、")}`,
+          `物件钩：${(foundationCard.directionCard.objectHooks ?? []).map((o) => `${o.name}（${o.chain}）`).join("；")}`,
+          `色彩编码：${foundationCard.directionCard.colorCode ?? ""}`,
+        ].join("\n");
+
+        const allEpisodes: EpisodeScript[] = [];
+        for (let start = 1; start <= cardEpisodes; start += EPISODES_PER_CHUNK) {
+          const end = Math.min(start + EPISODES_PER_CHUNK - 1, cardEpisodes);
+          const isFirst = start === 1;
+          const rangeBeats = beatsFor(Math.max(1, start - 1), end); // 带前一集条目供开场承接
+          const prevContext =
+            !isFirst && allEpisodes.length
+              ? [
+                  "===== 本卡已产出集数梗概（仅供续写保持一致，绝不要重复产出这些集） =====",
+                  epDigest(allEpisodes),
+                  "",
+                ].join("\n")
+              : "";
+          const { object: chunk } = await generateObjectStreamed({
+            model: await getModel(),
+            maxRetries: 3,
+            schema: episodeChunkSchema,
+            prompt: [
+              `你是资深海外竖屏短剧总编剧。基于方向卡、人物小传与全剧集纲，产出本卡第 ${start}~${end} 集的连贯剧本（恰好 ${end - start + 1} 集，epNo 从 ${start} 连续编号，落在集纲对应条目轨道上）。`,
+              "",
+              "【小黑DNA 写作标准（语料实证，必须严格遵守）】",
+              DNA_SCRIPT,
+              "",
+              "【产出要求】",
+              `1. episodes：恰好本批 ${start}~${end} 集${
+                isFirst
+                  ? "。第 1 集按 DNA 四层钩写：前 3 秒视觉钩 → 前 30 秒信息钩三连 → 前 60 秒金钩 → 集尾痛点钩；开局骨架按题材选冷开场闪回式或 VO 自我介绍式"
+                  : `。第 ${start} 集开场 1-2 行直接承接 EP${start - 1} 的集尾悬念，人物状态/秘密进度/物件钩进度与上文梗概严格一致`
+              }。这些集本身就必须是可投流的素材。`,
+              "2. 单集体量按 DNA：2.2 场戏/集、约 20 行英文台词/集、只推进一个冲突单元；开场不做空镜铺垫；对白回合制攻击—反击—升级；每集必有集尾钩（台词中断/表情定格/新威胁登场三选一），每集最后一个节拍用 note 收尾（特效: 黑场）。",
+              "3. 台词执行语言 DNA：平均 5.5 词/句、短句为主、长句只留给 VO 前史与身份揭晓审判句；高频功能句型按赛道复用；先把赛道术语群撒进台词；女频 VO 占台词 10-30%（isVo 标记），男频 <10%；金额/年份/年龄用具体数字进台词。",
+              "4. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
+              "5. 物件钩要用起来：方向卡里设计的物件钩在剧本里要完成它当前阶段的链条动作（埋伏笔/羞辱/认亲）。",
+              "6. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
+              "7. 【节拍级镜像纪律】若提供了原作逐集节拍镜像表（beatMap）：本批第 n 集镜像原作第 n 集——节拍的**数量、顺序、功能、情绪强度曲线**逐拍对齐；但每一拍的具体事件、场景、台词全部用新题材新写，复刻的是节奏骨架与情绪曲线，不是文字表达。每集必须填写 mirror 字段：sourceEpNo=镜像的原作集号，mapping 逐拍写「原作这一拍的功能」→「新剧这一拍的落法」。",
+              "",
+              "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
+              "- 场景头四要素拆成字段：timeOfDay（日/夜/晨/昏）、intExt（内/外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。闪回直接写进 location（如 树林·闪回）。",
+              "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句一个镜头，15-35 字，情绪写成可视化表情指令（瞳孔收缩、死死攥紧、冷笑）。",
+              "- dialogue 节拍：character=角色中文名，mood=情绪表演指令（2-6 字，如 压低声音，郑重），isVo=是否内心独白，en=地道美式英文台词，zh=与英文对应的简体中文对照——中文对照要比英文更口语、更「剧」，可增译情绪（如 \"Say her name again, I dare you.\" →「你有种再说一遍她的名字」）。en/zh 必须一一对应，不许漏译或自由发挥。",
+              "- caption 节拍：【字幕】，en=英文大字幕，zh=简体中文。三类用途：角色首登场身份卡（用人物小传里设计的 captionCard）、金额/关键信息特写、集尾【字幕：未完待续】。身份/金额/反转词要上字幕——它是唯一的强调手段。",
+              "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 特效: 画面定格+金粉粒子 / 闪切: 九年前的雨夜…），**不要自带【】括号**。集尾视觉三板斧：定格→黑场/闪白→未完待续字幕。",
+              "- logline、premise、positionHint、promoName、场景头字段全部用简体中文（给你看的说明文字）；只有台词 en 和字幕 en 是英文。",
+              "",
+              "【成稿自检（去 AI 味）】",
+              DNA_DE_AI,
+              "",
+              LOCALIZATION_RULES,
+              "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文台词严禁任何中式表达。）",
+              "",
+              conceptBlock,
+              "",
+              directionBlock,
+              "",
+              "===== 人物小传 =====",
+              JSON.stringify(foundationCard.characters, null, 2),
+              "",
+              "===== 本批集纲条目（剧本必须落在轨道上） =====",
+              `大期待：${foundationCard.outline.expectation}`,
+              `框架：${foundationCard.outline.framework}`,
+              `核心梗：${foundationCard.outline.coreGimmick}`,
+              JSON.stringify(rangeBeats, null, 2),
+              prevContext,
+              analysisBlock,
+              beatMapFor(start, end) ? `\n${beatMapFor(start, end)}` : "",
+              redBlock ? `\n${redBlock}` : "",
+            ].join("\n"),
+          });
+          allEpisodes.push(...(chunk.episodes as EpisodeScript[]));
+        }
+
+        // 第三步：2 段不连贯投流素材（优先从首卡之后的付费墙/大反转节点挑）
+        const laterBeats = beatsFor(cardEpisodes + 1, Number.MAX_SAFE_INTEGER);
+        const { object: promoObj } = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
-          schema: conceptPackScriptSchema,
+          schema: promoChunkSchema,
           prompt: [
-            "你是资深海外竖屏短剧总编剧。基于方向卡、人物小传与全剧集纲，产出可直接投流测试的剧本包。",
-            "",
-            "【小黑DNA 写作标准（语料实证，必须严格遵守）】",
-            DNA_SCRIPT,
+            `你是资深海外竖屏短剧总编剧。某换皮剧的**首卡（第 1~${cardEpisodes} 集）已产出完毕**，现在补 2 段不连贯的投流素材。`,
             "",
             "【产出要求】",
-            "1. episodes：3~5 集**连贯**剧本（epNo 从 1 连续编号，对应集纲 beats 的前几集）。这前几集本身就必须是可投流的素材——第 1 集按 DNA 四层钩写：前 3 秒视觉钩 → 前 30 秒信息钩三连 → 前 60 秒金钩 → 集尾痛点钩；开局骨架按题材选冷开场闪回式或 VO 自我介绍式。",
-            "2. promoClips：**恰好 2 集不连贯的投流素材**。从集纲里的付费墙集/大反转集挑最炸的两段写成完整单集（2-4 个场景 + 结尾黑场悬念），集号不与连贯集衔接（需大于连贯集最大集号且不超过总集数）。每集给一句 premise 让没看过前情的观众秒懂这段戏，并按「A 礼堂掀桌·这座楼是我的钱」这种「字母+短语概括卖点」的风格起 promoName。",
-            "3. 单集体量按 DNA：2.2 场戏/集、约 20 行英文台词/集、只推进一个冲突单元；开场 1-2 行直接承接上集悬念不做空镜铺垫；对白回合制攻击—反击—升级；每集必有集尾钩（台词中断/表情定格/新威胁登场三选一），每集最后一个节拍用 note 收尾（特效: 黑场）。",
-            "4. 台词执行语言 DNA：平均 5.5 词/句、短句为主、长句只留给 VO 前史与身份揭晓审判句；高频功能句型按赛道复用；先把赛道术语群撒进台词；女频 VO 占台词 10-30%（isVo 标记），男频 <10%；金额/年份/年龄用具体数字进台词。",
-            "5. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
-            "6. 物件钩要用起来：方向卡里设计的物件钩在剧本里要完成它当前阶段的链条动作（埋伏笔/羞辱/认亲）。",
-            "7. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
-            "8. 【节拍级镜像纪律】若提供了原作逐集节拍镜像表（beatMap）：episodes 第 n 集镜像原作第 n 集——节拍的**数量、顺序、功能、情绪强度曲线**逐拍对齐；但每一拍的具体事件、场景、台词全部用新题材新写，复刻的是节奏骨架与情绪曲线，不是文字表达。每集必须填写 mirror 字段：sourceEpNo=镜像的原作集号，mapping 逐拍写「原作这一拍的功能」→「新剧这一拍的落法」。promoClips 从节拍表里挑情绪强度最高且不在连贯集范围内的两集镜像，mirror 同样必填。",
+            `1. promoClips：恰好 2 段完整单集（2-4 个场景 + 结尾黑场悬念）。epNo 优先大于首卡最大集号（>${cardEpisodes}）且不超过总集数 ${pool.totalEpisodes}；若集纲在首卡之后没有节点，则从全剧集纲挑两个最炸的关键节点、epNo 用该节点集号。每段给一句 premise 让没看过前情的观众秒懂这段戏，按「A 礼堂掀桌·这座楼是我的钱」这种「字母+短语概括卖点」风格起 promoName。`,
+            "2. 单集体量与格式同首卡剧本：2.2 场戏左右、约 20 行英文台词、回合制对白、集尾钩 + 特效: 黑场；角色首登场给【字幕】身份卡。",
+            "3. 【核心期待锁死】与【节拍级镜像纪律】同首卡要求：episode 的 mirror 必填（sourceEpNo=镜像的原作集号，逐拍对照）；内容全部新写，不抄原作表达。",
+            "4. 物件钩完成当前阶段链条动作；台词语言 DNA 同首卡（5.5 词/句、赛道术语群、VO 占比、具体数字）。",
             "",
-            "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
-            "- 场景头四要素拆成字段：timeOfDay（日/夜/晨/昏）、intExt（内/外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。闪回直接写进 location（如 树林·闪回）。",
-            "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句一个镜头，15-35 字，情绪写成可视化表情指令（瞳孔收缩、死死攥紧、冷笑）。",
-            "- dialogue 节拍：character=角色中文名，mood=情绪表演指令（2-6 字，如 压低声音，郑重），isVo=是否内心独白，en=地道美式英文台词，zh=与英文对应的简体中文对照——中文对照要比英文更口语、更「剧」，可增译情绪（如 \"Say her name again, I dare you.\" →「你有种再说一遍她的名字」）。en/zh 必须一一对应，不许漏译或自由发挥。",
-            "- caption 节拍：【字幕】，en=英文大字幕，zh=简体中文。三类用途：角色首登场身份卡（用人物小传里设计的 captionCard）、金额/关键信息特写、集尾【字幕：未完待续】。身份/金额/反转词要上字幕——它是唯一的强调手段。",
-            "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 特效: 画面定格+金粉粒子 / 闪切: 九年前的雨夜…），**不要自带【】括号**。集尾视觉三板斧：定格→黑场/闪白→未完待续字幕。",
-            "- logline、premise、positionHint、promoName、场景头字段全部用简体中文（给你看的说明文字）；只有台词 en 和字幕 en 是英文。",
+            "【剧本格式：中文短剧工作稿】与首卡一致——场景头四要素（timeOfDay/intExt/location/cast）、action/dialogue（en+zh 一一对应）/caption/note 节拍，说明文字中文、台词与字幕英文。",
             "",
             "【成稿自检（去 AI 味）】",
-            DNA_DE_AI,
+              DNA_DE_AI,
             "",
             LOCALIZATION_RULES,
-            "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文台词严禁任何中式表达。）",
             "",
             conceptBlock,
             "",
-            "===== 方向卡 =====",
-            `核心期待：${foundation.object.directionCard.expectation}`,
-            `元素：${foundation.object.directionCard.elements.join("、")}`,
-            `忍的代价（写死）：${foundation.object.directionCard.enduranceCost}`,
-            foundation.object.directionCard.clock ? `时钟：${foundation.object.directionCard.clock}` : "",
-            foundation.object.directionCard.mastermind ? `幕后反派：${foundation.object.directionCard.mastermind}` : "",
-            `不得不破戒的触发点：${foundation.object.directionCard.breakingPoint}`,
-            `强弱格局：${foundation.object.directionCard.powerMap}`,
-            `母题复合：${(foundation.object.directionCard.motifs ?? []).join("、")}`,
-            `物件钩：${(foundation.object.directionCard.objectHooks ?? []).map((o) => `${o.name}（${o.chain}）`).join("；")}`,
-            `色彩编码：${foundation.object.directionCard.colorCode ?? ""}`,
+            directionBlock,
             "",
-            "===== 人物小传 =====",
-            JSON.stringify(foundation.object.characters, null, 2),
+            "===== 首卡已产出集数梗概（素材不得与这些集号重复） =====",
+            epDigest(allEpisodes),
             "",
-            "===== 全剧集纲（剧本必须落在集纲轨道上） =====",
-            `大期待：${foundation.object.outline.expectation}`,
-            `框架：${foundation.object.outline.framework}`,
-            `核心梗：${foundation.object.outline.coreGimmick}`,
-            JSON.stringify(foundation.object.outline.beats, null, 2),
-            "",
+            "===== 素材挑选范围：首卡之后的集纲节点 =====",
+            JSON.stringify(laterBeats.length ? laterBeats : foundationCard.outline.beats.slice(-8), null, 2),
+            beatMapFor(cardEpisodes + 1, Number.MAX_SAFE_INTEGER)
+              ? `\n${beatMapFor(cardEpisodes + 1, Number.MAX_SAFE_INTEGER)}`
+              : "",
             analysisBlock,
-            beatMapBlock ? `\n${beatMapBlock}` : "",
             redBlock ? `\n${redBlock}` : "",
           ].join("\n"),
         });
@@ -804,8 +889,8 @@ export const pipelineRouter = createRouter({
           directionCard: foundation.object.directionCard as DirectionCard,
           characters: foundation.object.characters as CharacterBio[],
           outline: foundation.object.outline as ConceptScriptPack["outline"],
-          episodes: scriptObj.object.episodes as EpisodeScript[],
-          promoClips: scriptObj.object.promoClips,
+          episodes: allEpisodes,
+          promoClips: promoObj.promoClips,
           status: "done",
         };
         const db = getDb();

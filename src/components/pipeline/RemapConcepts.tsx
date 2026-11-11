@@ -134,7 +134,7 @@ export function RemapConcepts({
           </div>
           {pool.selectedIds.length > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
-              已粗选 {pool.selectedIds.length} 个方案。进入「剧本产出」阶段为每个方案生成 3~5 集连贯剧本 + 2 段投流素材。
+              已粗选 {pool.selectedIds.length} 个方案。进入「剧本产出」阶段为每个方案产出首卡（第 1~10 集）全量连贯剧本 + 2 段投流素材。
             </p>
           )}
         </section>

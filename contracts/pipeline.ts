@@ -252,7 +252,7 @@ export interface OutlineBeat {
   paywall?: boolean;   // 是否付费墙位置（EP5/12/24/38/45）
 }
 
-/** 一个入选换皮方案的完整产出包：方向卡 + 人物小传 + 全剧集纲 + 3~5 集连贯剧本 + 2 集不连贯投流素材 */
+/** 一个入选换皮方案的完整产出包：方向卡 + 人物小传 + 全剧集纲 + 首卡 1~10 集全量连贯剧本 + 2 集不连贯投流素材 */
 export interface ConceptScriptPack {
   conceptId: string;
   logline: string;                 // 本方案一句话卖点
@@ -264,7 +264,7 @@ export interface ConceptScriptPack {
     coreGimmick: string;           // 核心梗
     beats: OutlineBeat[];          // 逐集集纲（至少前 10 集，尽量覆盖全剧关键节点）
   };
-  episodes: EpisodeScript[];       // 3~5 集连贯剧本（本身即可投流）
+  episodes: EpisodeScript[];       // 首卡 1~10 集全量连贯剧本（本身即可投流）
   promoClips: PromoClip[];         // 2 集不连贯投流素材（完整单集剧本）
   status: "pending" | "generating" | "done" | "error";
 }
