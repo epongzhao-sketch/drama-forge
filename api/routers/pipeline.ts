@@ -348,6 +348,32 @@ async function saveRemapPool(projectId: number, pool: RemapPool) {
   }
 }
 
+/** 读取某方案的剧本包（分步产出时承载中间态：status=generating 的部分包） */
+async function loadPack(projectId: number, conceptId: string): Promise<ConceptScriptPack | null> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(scriptPacks)
+    .where(and(eq(scriptPacks.projectId, projectId), eq(scriptPacks.conceptId, conceptId)));
+  return row ? (row.pack as ConceptScriptPack) : null;
+}
+
+async function savePack(projectId: number, pack: ConceptScriptPack) {
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(scriptPacks)
+    .where(and(eq(scriptPacks.projectId, projectId), eq(scriptPacks.conceptId, pack.conceptId)));
+  if (existing) {
+    await db
+      .update(scriptPacks)
+      .set({ pack })
+      .where(and(eq(scriptPacks.projectId, projectId), eq(scriptPacks.conceptId, pack.conceptId)));
+  } else {
+    await db.insert(scriptPacks).values({ projectId, conceptId: pack.conceptId, pack });
+  }
+}
+
 /**
  * 欧美海外短剧市场本地化纪律 —— 注入所有生成/评估 prompt，全程禁止中式元素。
  * 这是硬约束：产出必须让北美/欧美观众看得懂、代入得了，不能出现中国特有的制度、
@@ -653,9 +679,16 @@ export const pipelineRouter = createRouter({
       return pool;
     }),
 
-  /** 为一个入选方案生成完整剧本包：方向卡 + 人物小传 + 首卡 1~10 集全量连贯剧本 + 2 段不连贯投流素材（一卡集数与批量大小见 FIRST_CARD_EPISODES / EPISODES_PER_CHUNK） */
-  generateScriptPack: authedQuery
-    .input(z.object({ projectId: z.number(), conceptId: z.string() }))
+  /** 为一个入选方案分步生成完整剧本包（前端串行调用，每步一个独立请求，避免平台代理掐断超长请求）：foundation=方向卡+人物小传+集纲；episodes(batch)=本批 5 集；promo=2 段投流素材。一卡集数见 FIRST_CARD_EPISODES */
+  generateScriptPackStep: authedQuery
+    .input(
+      z.object({
+        projectId: z.number(),
+        conceptId: z.string(),
+        step: z.enum(["foundation", "episodes", "promo"]),
+        batch: z.number().int().min(0).default(0),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await ensureProject(ctx.user.id, input.projectId);
       const { sample, analysis } = await loadContext(input.projectId);
@@ -694,9 +727,12 @@ export const pipelineRouter = createRouter({
         ? `===== 已验证的投流爆款素材段（供情绪结构参考，勿照抄） =====\n${redTexts.map((t, i) => `【素材${i + 1}】${t}`).join("\n\n")}`
         : "";
 
+      const cardEpisodes = Math.min(FIRST_CARD_EPISODES, pool.totalEpisodes);
+
       try {
-        // 第一步：方向卡 + 人物小传 + 全剧集纲（剧本的世界观地基与 roadmap）
-        const foundation = await generateObjectStreamed({
+        // 第 1 步（独立请求）：方向卡 + 人物小传 + 全剧集纲；落库 status=generating，前端再逐批调 episodes/promo
+        if (input.step === "foundation") {
+          const foundation = await generateObjectStreamed({
           model: await getModel(),
           maxRetries: 3,
           schema: packFoundationSchema,
@@ -741,10 +777,32 @@ export const pipelineRouter = createRouter({
             redBlock ? `\n${redBlock}` : "",
           ].join("\n"),
         });
+          const f = foundation.object;
+          const foundationPack: ConceptScriptPack = {
+            conceptId: input.conceptId,
+            logline: f.logline,
+            directionCard: f.directionCard as DirectionCard,
+            characters: f.characters as CharacterBio[],
+            outline: f.outline as ConceptScriptPack["outline"],
+            episodes: [],
+            promoClips: [],
+            status: "generating",
+          };
+          await savePack(input.projectId, foundationPack);
+          return foundationPack;
+        }
 
-        // 第二步：首卡全量连贯剧本（第 1~cardEpisodes 集，每批 ≤5 集，跨批注入前文梗概保连续）
-        const cardEpisodes = Math.min(FIRST_CARD_EPISODES, pool.totalEpisodes);
-        const foundationCard = foundation.object;
+        // 第 2/3 步：加载第 1 步落库的地基，按批次执行（前端串行调用，每步一个独立请求）
+        const partial = await loadPack(input.projectId, input.conceptId);
+        if (!partial?.directionCard || !partial.outline || !partial.characters?.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "请先完成第 1 步（方向卡 + 人物小传 + 集纲地基）" });
+        }
+        const foundationCard = {
+          logline: partial.logline,
+          directionCard: partial.directionCard,
+          characters: partial.characters,
+          outline: partial.outline,
+        };
         const beatsFor = (from: number, to: number) =>
           foundationCard.outline.beats.filter((b) => b.epNo >= from && b.epNo <= to);
         const beatMapFor = (from: number, to: number) =>
@@ -773,9 +831,13 @@ export const pipelineRouter = createRouter({
           `色彩编码：${foundationCard.directionCard.colorCode ?? ""}`,
         ].join("\n");
 
-        const allEpisodes: EpisodeScript[] = [];
-        for (let start = 1; start <= cardEpisodes; start += EPISODES_PER_CHUNK) {
+        const allEpisodes = partial.episodes ?? [];
+        if (input.step === "episodes") {
+          const start = input.batch * EPISODES_PER_CHUNK + 1;
           const end = Math.min(start + EPISODES_PER_CHUNK - 1, cardEpisodes);
+          if (start > cardEpisodes) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "批次超出首卡范围" });
+          }
           const isFirst = start === 1;
           const rangeBeats = beatsFor(Math.max(1, start - 1), end); // 带前一集条目供开场承接
           const prevContext =
@@ -841,10 +903,16 @@ export const pipelineRouter = createRouter({
               redBlock ? `\n${redBlock}` : "",
             ].join("\n"),
           });
-          allEpisodes.push(...(chunk.episodes as EpisodeScript[]));
+          const mergedEpisodes = [
+            ...allEpisodes.filter((e) => e.epNo < start || e.epNo > end),
+            ...(chunk.episodes as EpisodeScript[]),
+          ].sort((x, y) => x.epNo - y.epNo);
+          const episodesPack: ConceptScriptPack = { ...partial, episodes: mergedEpisodes, status: "generating" };
+          await savePack(input.projectId, episodesPack);
+          return episodesPack;
         }
 
-        // 第三步：2 段不连贯投流素材（优先从首卡之后的付费墙/大反转节点挑）
+        // 第 3 步（独立请求）：2 段不连贯投流素材（优先从首卡之后的付费墙/大反转节点挑）
         const laterBeats = beatsFor(cardEpisodes + 1, Number.MAX_SAFE_INTEGER);
         const { object: promoObj } = await generateObjectStreamed({
           model: await getModel(),
@@ -883,30 +951,14 @@ export const pipelineRouter = createRouter({
           ].join("\n"),
         });
 
-        const pack: ConceptScriptPack = {
-          conceptId: input.conceptId,
-          logline: foundation.object.logline,
-          directionCard: foundation.object.directionCard as DirectionCard,
-          characters: foundation.object.characters as CharacterBio[],
-          outline: foundation.object.outline as ConceptScriptPack["outline"],
+        const finalPack: ConceptScriptPack = {
+          ...partial,
           episodes: allEpisodes,
           promoClips: promoObj.promoClips,
           status: "done",
         };
-        const db = getDb();
-        const [existing] = await db
-          .select()
-          .from(scriptPacks)
-          .where(and(eq(scriptPacks.projectId, input.projectId), eq(scriptPacks.conceptId, input.conceptId)));
-        if (existing) {
-          await db
-            .update(scriptPacks)
-            .set({ pack })
-            .where(and(eq(scriptPacks.projectId, input.projectId), eq(scriptPacks.conceptId, input.conceptId)));
-        } else {
-          await db.insert(scriptPacks).values({ projectId: input.projectId, conceptId: input.conceptId, pack });
-        }
-        return pack;
+        await savePack(input.projectId, finalPack);
+        return finalPack;
       } catch (err) {
         throw classifyAiError(err);
       }

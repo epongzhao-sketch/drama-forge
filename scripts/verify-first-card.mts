@@ -66,11 +66,14 @@ await getDb().insert(remaps).values({
 });
 console.log("pool seeded, running pack generation (15-40 min)…");
 
-// 4. 真实生成
+// 4. 分步真实生成（前端同款四步串行）
 const t0 = Date.now();
-const pack = await caller.pipeline.generateScriptPack({ projectId, conceptId: "verify-concept-1" });
+await caller.pipeline.generateScriptPackStep({ projectId, conceptId: "verify-concept-1", step: "foundation" });
+await caller.pipeline.generateScriptPackStep({ projectId, conceptId: "verify-concept-1", step: "episodes", batch: 0 });
+await caller.pipeline.generateScriptPackStep({ projectId, conceptId: "verify-concept-1", step: "episodes", batch: 1 });
+const pack = await caller.pipeline.generateScriptPackStep({ projectId, conceptId: "verify-concept-1", step: "promo" });
 const mins = ((Date.now() - t0) / 60000).toFixed(1);
-console.log(`pack done in ${mins} min`);
+console.log(`pack done in ${mins} min (4 个独立请求)`);
 
 // 5. 校验
 const eps = pack.episodes ?? [];

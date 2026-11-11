@@ -333,7 +333,8 @@ export function ScriptPacks({
   onDone: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(pool?.selectedIds[0] ?? null);
-  const genMut = trpc.pipeline.generateScriptPack.useMutation({ onSuccess: onDone });
+  const stepMut = trpc.pipeline.generateScriptPackStep.useMutation();
+  const [progress, setProgress] = useState<{ conceptId: string; text: string } | null>(null);
 
   if (!pool || pool.selectedIds.length === 0) {
     return (
@@ -346,6 +347,31 @@ export function ScriptPacks({
   const packMap = new Map(packs.map((p) => [p.conceptId, p]));
   const activePack = activeId ? packMap.get(activeId) : undefined;
   const legacy = activePack ? isLegacyPack(activePack) : false;
+  const busyId = progress?.conceptId ?? null;
+
+  // 分步串行产出：每步一个独立请求（单步 3-8 分钟），避免平台代理掐断超长请求（单请求 20 分钟必死）
+  const runPack = async (conceptId: string) => {
+    const card = Math.min(10, pool.totalEpisodes);
+    const batches = Math.ceil(card / 5);
+    const total = batches + 2;
+    try {
+      setProgress({ conceptId, text: `第 1/${total} 步：方向卡 + 人物小传 + 全剧集纲…` });
+      await stepMut.mutateAsync({ projectId, conceptId, step: "foundation" });
+      for (let b = 0; b < batches; b++) {
+        const s = b * 5 + 1;
+        const e = Math.min(s + 4, card);
+        setProgress({ conceptId, text: `第 ${b + 2}/${total} 步：第 ${s}~${e} 集连贯剧本…` });
+        await stepMut.mutateAsync({ projectId, conceptId, step: "episodes", batch: b });
+      }
+      setProgress({ conceptId, text: `第 ${total}/${total} 步：2 段投流素材…` });
+      await stepMut.mutateAsync({ projectId, conceptId, step: "promo" });
+      onDone();
+    } catch {
+      // 失败由 stepMut.error 呈现，可点按钮从第 1 步重跑（已落库的批次会被覆盖，不会重复）
+    } finally {
+      setProgress(null);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -353,7 +379,7 @@ export function ScriptPacks({
         {pool.selectedIds.map((id) => {
           const concept = pool.concepts.find((c) => c.id === id);
           const pack = packMap.get(id);
-          const generating = genMut.isPending && genMut.variables?.conceptId === id;
+          const generating = busyId === id;
           return (
             <button key={id} onClick={() => setActiveId(id)}
               className={`panel flex items-center gap-2 px-3.5 py-2.5 text-left text-xs transition-colors ${
@@ -362,9 +388,9 @@ export function ScriptPacks({
               <Clapperboard className="h-3.5 w-3.5 text-primary" />
               <span className="font-medium">{concept?.title ?? id}</span>
               <span className={`mono-label px-1 py-0.5 text-[9px] ${
-                pack ? "bg-[hsl(var(--mint))]/10 text-[hsl(var(--mint))]" : generating ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                pack && pack.status === "done" ? "bg-[hsl(var(--mint))]/10 text-[hsl(var(--mint))]" : pack ? "bg-primary/10 text-primary" : generating ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
               }`}>
-                {pack ? "已产出" : generating ? "生成中" : "待生成"}
+                {pack && pack.status === "done" ? "已产出" : pack ? "产出中" : generating ? "生成中" : "待生成"}
               </span>
             </button>
           );
@@ -380,23 +406,23 @@ export function ScriptPacks({
                   该剧本包是旧版格式——重新产出后可获得小黑DNA新版结构：方向卡（含母题复合/物件钩/色彩编码）+ 人物小传（四态弧线+登场字幕卡）+ 全剧集纲（付费墙布局）+ 中文工作稿剧本。
                 </p>
               )}
-              <Button onClick={() => genMut.mutate({ projectId, conceptId: activeId })} disabled={genMut.isPending}>
-                {genMut.isPending ? "正在产出剧本包…" : legacy ? "重新产出（新版格式）" : "产出该方案的剧本包"}
+              <Button onClick={() => void runPack(activeId)} disabled={!!busyId}>
+                {busyId === activeId ? "正在产出剧本包…" : legacy ? "重新产出（新版格式）" : "产出该方案的剧本包"}
               </Button>
-              {genMut.isPending && <Generating text="分四步产出：方向卡+人物小传+集纲（约 2-4 分钟）→ 第 1-5 集 → 第 6-10 集 → 投流素材（每批约 3-10 分钟）——全程可能 15-40 分钟，请保持页面打开…" />}
-              {genMut.error && <ErrorBox message={genMut.error.message} />}
+              {progress?.conceptId === activeId && <Generating text={`${progress.text}（每步约 3-8 分钟，全程约 15-40 分钟，请保持页面打开；页面关了可重新点「产出」从第 1 步重跑）`} />}
+              {stepMut.error && <ErrorBox message={stepMut.error.message} />}
             </div>
           )}
           {activePack && !legacy && (
             <>
               <div className="mb-3 flex justify-end">
-                <Button size="sm" variant="secondary" disabled={genMut.isPending}
-                  onClick={() => genMut.mutate({ projectId, conceptId: activeId })}>
+                <Button size="sm" variant="secondary" disabled={!!busyId}
+                  onClick={() => void runPack(activeId)}>
                   重新产出
                 </Button>
               </div>
-              {genMut.isPending && <Generating text="重新产出中（首卡 1~10 集全量 + 投流素材，全程约 15-40 分钟）…" />}
-              {genMut.error && <ErrorBox message={genMut.error.message} />}
+              {progress?.conceptId === activeId && <Generating text={`${progress.text}（全程约 15-40 分钟）`} />}
+              {stepMut.error && <ErrorBox message={stepMut.error.message} />}
               <PackView pack={activePack} />
             </>
           )}
