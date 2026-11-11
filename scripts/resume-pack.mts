@@ -2,15 +2,29 @@
 // 用法：npx tsx -r dotenv/config ./scripts/resume-pack.mts <projectId> <conceptId> [startBatch]
 import { appRouter } from "../api/router";
 import { findUserByUnionId } from "../api/queries/users";
+import { getDb } from "../api/queries/connection";
+import { projects } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 const [, , projectIdStr, conceptId, batchStr] = process.argv;
 const projectId = Number(projectIdStr);
 const startBatch = Number(batchStr ?? 0);
 if (!projectId || !conceptId) throw new Error("usage: resume-pack.mts <projectId> <conceptId> [startBatch]");
-const unionId = process.env.OWNER_UNION_ID;
-if (!unionId) throw new Error("OWNER_UNION_ID missing");
-const user = await findUserByUnionId(unionId);
-if (!user) throw new Error("dev user not found");
+
+// 用项目归属用户身份调用（dev-login 用户不一定是项目 owner）
+const db = getDb();
+const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
+if (!proj) throw new Error("project not found");
+const ownerUnionId = process.env.OWNER_UNION_ID!;
+let user = await findUserByUnionId(ownerUnionId);
+if (!user || user.id !== proj.userId) {
+  // 直接从 users 表按 id 取归属用户
+  const { users } = await import("../db/schema");
+  const [u] = await db.select().from(users).where(eq(users.id, proj.userId));
+  if (!u) throw new Error("project owner not found in users table");
+  user = u;
+}
+console.log("acting as user", user.id, "for project", projectId);
 const caller = appRouter.createCaller({ req: new Request("http://localhost/"), resHeaders: new Headers(), user } as never);
 
 const t0 = Date.now();
