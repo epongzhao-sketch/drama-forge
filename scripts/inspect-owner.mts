@@ -1,13 +1,14 @@
-// 排查项目归属：对比项目 userId 与 dev-login 用户 id
+// 查某个项目的归属用户（排查续跑脚本的 NOT_FOUND）
 import { getDb } from "../api/queries/connection";
-import { projects, users } from "../db/schema";
+import { projects } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { findUserByUnionId } from "../api/queries/users";
 
-const projectId = Number(process.argv[2]);
-if (!projectId) throw new Error("usage: inspect-owner.mts <projectId>");
+const id = Number(process.argv[2]);
 const db = getDb();
-const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
-console.log("project", projectId, "userId =", proj?.userId);
-const all = await db.select().from(users);
-for (const u of all) console.log("user", u.id, u.unionId, u.name);
+const [p] = await db.select().from(projects).where(eq(projects.id, id));
+console.log("project:", p ? { id: p.id, userId: p.userId, title: p.title } : "NOT FOUND");
+const unionId = process.env.OWNER_UNION_ID!;
+const user = await findUserByUnionId(unionId);
+console.log("dev-login user id:", user?.id, "match project?", user?.id === p?.userId);
 process.exit(0);
