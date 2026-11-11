@@ -335,6 +335,8 @@ export function ScriptPacks({
   const [activeId, setActiveId] = useState<string | null>(pool?.selectedIds[0] ?? null);
   const stepMut = trpc.pipeline.generateScriptPackStep.useMutation();
   const [progress, setProgress] = useState<{ conceptId: string; text: string } | null>(null);
+  // 失败续跑：记住失败步序号，某步被代理掐断后可从该步继续（已落库批次幂等覆盖，不会重复）
+  const [resumeAt, setResumeAt] = useState<{ conceptId: string; nextStep: number; total: number } | null>(null);
 
   if (!pool || pool.selectedIds.length === 0) {
     return (
@@ -350,24 +352,30 @@ export function ScriptPacks({
   const busyId = progress?.conceptId ?? null;
 
   // 分步串行产出：每步一个独立请求（单步 3-8 分钟），避免平台代理掐断超长请求（单请求 20 分钟必死）
-  const runPack = async (conceptId: string) => {
+  const runPack = async (conceptId: string, startStep = 0) => {
     const card = Math.min(10, pool.totalEpisodes);
     const batches = Math.ceil(card / 5);
     const total = batches + 2;
+    const steps: { step: "foundation" | "episodes" | "promo"; batch: number; label: string }[] = [
+      { step: "foundation", batch: 0, label: "方向卡 + 人物小传 + 全剧集纲" },
+      ...Array.from({ length: batches }, (_, b) => ({
+        step: "episodes" as const,
+        batch: b,
+        label: `第 ${b * 5 + 1}~${Math.min(b * 5 + 5, card)} 集连贯剧本`,
+      })),
+      { step: "promo", batch: 0, label: "2 段投流素材" },
+    ];
+    let current = startStep;
     try {
-      setProgress({ conceptId, text: `第 1/${total} 步：方向卡 + 人物小传 + 全剧集纲…` });
-      await stepMut.mutateAsync({ projectId, conceptId, step: "foundation" });
-      for (let b = 0; b < batches; b++) {
-        const s = b * 5 + 1;
-        const e = Math.min(s + 4, card);
-        setProgress({ conceptId, text: `第 ${b + 2}/${total} 步：第 ${s}~${e} 集连贯剧本…` });
-        await stepMut.mutateAsync({ projectId, conceptId, step: "episodes", batch: b });
+      setResumeAt(null);
+      for (; current < steps.length; current++) {
+        setProgress({ conceptId, text: `第 ${current + 1}/${total} 步：${steps[current].label}…` });
+        await stepMut.mutateAsync({ projectId, conceptId, step: steps[current].step, batch: steps[current].batch });
       }
-      setProgress({ conceptId, text: `第 ${total}/${total} 步：2 段投流素材…` });
-      await stepMut.mutateAsync({ projectId, conceptId, step: "promo" });
       onDone();
     } catch {
-      // 失败由 stepMut.error 呈现，可点按钮从第 1 步重跑（已落库的批次会被覆盖，不会重复）
+      // 失败保留续跑位置：从失败步继续（之前已落库的批次幂等覆盖，不会重复）
+      setResumeAt({ conceptId, nextStep: current, total });
     } finally {
       setProgress(null);
     }
@@ -406,19 +414,30 @@ export function ScriptPacks({
                   该剧本包是旧版格式——重新产出后可获得小黑DNA新版结构：方向卡（含母题复合/物件钩/色彩编码）+ 人物小传（四态弧线+登场字幕卡）+ 全剧集纲（付费墙布局）+ 中文工作稿剧本。
                 </p>
               )}
-              <Button onClick={() => void runPack(activeId)} disabled={!!busyId}>
-                {busyId === activeId ? "正在产出剧本包…" : legacy ? "重新产出（新版格式）" : "产出该方案的剧本包"}
+              <Button onClick={() => void runPack(activeId, resumeAt?.conceptId === activeId ? resumeAt.nextStep : 0)} disabled={!!busyId}>
+                {busyId === activeId
+                  ? "正在产出剧本包…"
+                  : resumeAt?.conceptId === activeId
+                    ? `从第 ${resumeAt.nextStep + 1}/${resumeAt.total} 步继续`
+                    : legacy
+                      ? "重新产出（新版格式）"
+                      : "产出该方案的剧本包"}
               </Button>
-              {progress?.conceptId === activeId && <Generating text={`${progress.text}（每步约 3-8 分钟，全程约 15-40 分钟，请保持页面打开；页面关了可重新点「产出」从第 1 步重跑）`} />}
+              {progress?.conceptId === activeId && <Generating text={`${progress.text}（每步约 3-8 分钟，全程约 15-40 分钟，请保持页面打开；中断后可从失败步骤继续）`} />}
               {stepMut.error && <ErrorBox message={stepMut.error.message} />}
+              {resumeAt?.conceptId === activeId && !progress && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  上次的产出在第 {resumeAt.nextStep + 1}/{resumeAt.total} 步中断，点上方按钮可从该步继续（已完成的步骤不会重复）。
+                </p>
+              )}
             </div>
           )}
           {activePack && !legacy && (
             <>
               <div className="mb-3 flex justify-end">
                 <Button size="sm" variant="secondary" disabled={!!busyId}
-                  onClick={() => void runPack(activeId)}>
-                  重新产出
+                  onClick={() => void runPack(activeId, resumeAt?.conceptId === activeId ? resumeAt.nextStep : 0)}>
+                  {resumeAt?.conceptId === activeId ? `从第 ${resumeAt.nextStep + 1}/${resumeAt.total} 步继续` : "重新产出"}
                 </Button>
               </div>
               {progress?.conceptId === activeId && <Generating text={`${progress.text}（全程约 15-40 分钟）`} />}
