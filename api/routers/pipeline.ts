@@ -838,78 +838,120 @@ export const pipelineRouter = createRouter({
           if (start > cardEpisodes) {
             throw new TRPCError({ code: "BAD_REQUEST", message: "批次超出首卡范围" });
           }
-          const isFirst = start === 1;
-          const rangeBeats = beatsFor(Math.max(1, start - 1), end); // 带前一集条目供开场承接
-          const prevContext =
-            !isFirst && allEpisodes.length
-              ? [
-                  "===== 本卡已产出集数梗概（仅供续写保持一致，绝不要重复产出这些集） =====",
-                  epDigest(allEpisodes),
-                  "",
-                ].join("\n")
-              : "";
-          const { object: chunk } = await generateObjectStreamed({
-            model: await getModel(),
-            maxRetries: 3,
-            schema: episodeChunkSchema,
-            prompt: [
-              `你是资深海外竖屏短剧总编剧。基于方向卡、人物小传与全剧集纲，产出本卡第 ${start}~${end} 集的连贯剧本（恰好 ${end - start + 1} 集，epNo 从 ${start} 连续编号，落在集纲对应条目轨道上）。`,
-              "",
-              "【小黑DNA 写作标准（语料实证，必须严格遵守）】",
-              DNA_SCRIPT,
-              "",
-              "【产出要求】",
-              `1. episodes：恰好本批 ${start}~${end} 集${
-                isFirst
-                  ? "。第 1 集按 DNA 四层钩写：前 3 秒视觉钩 → 前 30 秒信息钩三连 → 前 60 秒金钩 → 集尾痛点钩；开局骨架按题材选冷开场闪回式或 VO 自我介绍式"
-                  : `。第 ${start} 集开场 1-2 行直接承接 EP${start - 1} 的集尾悬念，人物状态/秘密进度/物件钩进度与上文梗概严格一致`
-              }。这些集本身就必须是可投流的素材。`,
-              "2. 单集体量按 DNA：2.2 场戏/集、约 20 行英文台词/集、只推进一个冲突单元；开场不做空镜铺垫；对白回合制攻击—反击—升级；每集必有集尾钩（台词中断/表情定格/新威胁登场三选一），每集最后一个节拍用 note 收尾（特效: 黑场）。",
-              "3. 台词执行语言 DNA：平均 5.5 词/句、短句为主、长句只留给 VO 前史与身份揭晓审判句；高频功能句型按赛道复用；先把赛道术语群撒进台词；女频 VO 占台词 10-30%（isVo 标记），男频 <10%；金额/年份/年龄用具体数字进台词。",
-              "4. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
-              "5. 物件钩要用起来：方向卡里设计的物件钩在剧本里要完成它当前阶段的链条动作（埋伏笔/羞辱/认亲）。",
-              "6. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
-              "7. 【节拍级镜像纪律】若提供了原作逐集节拍镜像表（beatMap）：本批第 n 集镜像原作第 n 集——节拍的**数量、顺序、功能、情绪强度曲线**逐拍对齐；但每一拍的具体事件、场景、台词全部用新题材新写，复刻的是节奏骨架与情绪曲线，不是文字表达。每集必须填写 mirror 字段：sourceEpNo=镜像的原作集号，mapping 逐拍写「原作这一拍的功能」→「新剧这一拍的落法」。",
-              "",
-              "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
-              "- 场景头四要素拆成字段：timeOfDay（日/夜/晨/昏）、intExt（内/外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。闪回直接写进 location（如 树林·闪回）。",
-              "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句一个镜头，15-35 字，情绪写成可视化表情指令（瞳孔收缩、死死攥紧、冷笑）。",
-              "- dialogue 节拍：character=角色中文名，mood=情绪表演指令（2-6 字，如 压低声音，郑重），isVo=是否内心独白，en=地道美式英文台词，zh=与英文对应的简体中文对照——中文对照要比英文更口语、更「剧」，可增译情绪（如 \"Say her name again, I dare you.\" →「你有种再说一遍她的名字」）。en/zh 必须一一对应，不许漏译或自由发挥。",
-              "- caption 节拍：【字幕】，en=英文大字幕，zh=简体中文。三类用途：角色首登场身份卡（用人物小传里设计的 captionCard）、金额/关键信息特写、集尾【字幕：未完待续】。身份/金额/反转词要上字幕——它是唯一的强调手段。",
-              "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 特效: 画面定格+金粉粒子 / 闪切: 九年前的雨夜…），**不要自带【】括号**。集尾视觉三板斧：定格→黑场/闪白→未完待续字幕。",
-              "- logline、premise、positionHint、promoName、场景头字段全部用简体中文（给你看的说明文字）；只有台词 en 和字幕 en 是英文。",
-              "",
-              "【成稿自检（去 AI 味）】",
-              DNA_DE_AI,
-              "",
-              LOCALIZATION_RULES,
-              "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文台词严禁任何中式表达。）",
-              "",
-              conceptBlock,
-              "",
-              directionBlock,
-              "",
-              "===== 人物小传 =====",
-              JSON.stringify(foundationCard.characters, null, 2),
-              "",
-              "===== 本批集纲条目（剧本必须落在轨道上） =====",
-              `大期待：${foundationCard.outline.expectation}`,
-              `框架：${foundationCard.outline.framework}`,
-              `核心梗：${foundationCard.outline.coreGimmick}`,
-              JSON.stringify(rangeBeats, null, 2),
-              prevContext,
-              analysisBlock,
-              beatMapFor(start, end) ? `\n${beatMapFor(start, end)}` : "",
-              redBlock ? `\n${redBlock}` : "",
-            ].join("\n"),
-          });
-          const mergedEpisodes = [
+          // 缺集自愈：LLM 可能少给集（该给 1~5 集只给了 2 集）。以已落库集数打底，缺多少补多少，
+          // 最多 3 轮；仍缺则抛错并保持 generating，可安全续跑本批次，绝不带缺集进入下一步。
+          const expected: number[] = [];
+          for (let n = start; n <= end; n++) expected.push(n);
+          const collected = new Map<number, EpisodeScript>();
+          for (const e of allEpisodes) {
+            if (e.epNo >= start && e.epNo <= end) collected.set(e.epNo, e);
+          }
+          const MAX_ROUNDS = 3;
+          for (let round = 0; round < MAX_ROUNDS; round++) {
+            const missing = expected.filter((n) => !collected.has(n));
+            if (!missing.length) break;
+            const reqStart = missing[0];
+            const reqEnd = missing[missing.length - 1];
+            const isFirst = reqStart === 1;
+            const rangeBeats = beatsFor(Math.max(1, reqStart - 1), reqEnd); // 带前一集条目供开场承接
+            const grown = [...allEpisodes.filter((e) => e.epNo < start || e.epNo > end), ...collected.values()].sort(
+              (x, y) => x.epNo - y.epNo,
+            );
+            const prevContext =
+              !isFirst && grown.length
+                ? [
+                    "===== 本卡已产出集数梗概（仅供续写保持一致，绝不要重复产出这些集） =====",
+                    epDigest(grown),
+                    "",
+                  ].join("\n")
+                : "";
+            const { object: chunk } = await generateObjectStreamed({
+              model: await getModel(),
+              maxRetries: 3,
+              schema: episodeChunkSchema,
+              prompt: [
+                `你是资深海外竖屏短剧总编剧。基于方向卡、人物小传与全剧集纲，产出本卡第 ${reqStart}~${reqEnd} 集的连贯剧本（恰好 ${reqEnd - reqStart + 1} 集，epNo 从 ${reqStart} 连续编号，落在集纲对应条目轨道上）。`,
+                "",
+                "【小黑DNA 写作标准（语料实证，必须严格遵守）】",
+                DNA_SCRIPT,
+                "",
+                "【产出要求】",
+                `1. episodes：恰好本批 ${reqStart}~${reqEnd} 集${
+                  isFirst
+                    ? "。第 1 集按 DNA 四层钩写：前 3 秒视觉钩 → 前 30 秒信息钩三连 → 前 60 秒金钩 → 集尾痛点钩；开局骨架按题材选冷开场闪回式或 VO 自我介绍式"
+                    : `。第 ${reqStart} 集开场 1-2 行直接承接 EP${reqStart - 1} 的集尾悬念，人物状态/秘密进度/物件钩进度与上文梗概严格一致`
+                }。这些集本身就必须是可投流的素材。`,
+                "2. 单集体量按 DNA：2.2 场戏/集、约 20 行英文台词/集、只推进一个冲突单元；开场不做空镜铺垫；对白回合制攻击—反击—升级；每集必有集尾钩（台词中断/表情定格/新威胁登场三选一），每集最后一个节拍用 note 收尾（特效: 黑场）。",
+                "3. 台词执行语言 DNA：平均 5.5 词/句、短句为主、长句只留给 VO 前史与身份揭晓审判句；高频功能句型按赛道复用；先把赛道术语群撒进台词；女频 VO 占台词 10-30%（isVo 标记），男频 <10%；金额/年份/年龄用具体数字进台词。",
+                "4. 【核心期待锁死】全剧主线必须兑现方向卡的 expectation 与忍的代价机制——只换元素外皮，关系结构与情绪承诺一个字的方向都不能改。若发现自己在写别的期待，立刻拉回。",
+                "5. 物件钩要用起来：方向卡里设计的物件钩在剧本里要完成它当前阶段的链条动作（埋伏笔/羞辱/认亲）。",
+                "6. 不得抄袭原作具体情节与台词，只保留情绪结构与节奏骨架。",
+                "7. 【节拍级镜像纪律】若提供了原作逐集节拍镜像表（beatMap）：本批第 n 集镜像原作第 n 集——节拍的**数量、顺序、功能、情绪强度曲线**逐拍对齐；但每一拍的具体事件、场景、台词全部用新题材新写，复刻的是节奏骨架与情绪曲线，不是文字表达。每集必须填写 mirror 字段：sourceEpNo=镜像的原作集号，mapping 逐拍写「原作这一拍的功能」→「新剧这一拍的落法」。",
+                "",
+                "【剧本格式：中文短剧工作稿】严格按下面的节拍类型输出——",
+                "- 场景头四要素拆成字段：timeOfDay（日/夜/晨/昏）、intExt（内/外）、location（中文地点，可含英文专名，如 米德尔堡猎狐与小马俱乐部·练习场）、cast（出场人物中文名）。闪回直接写进 location（如 树林·闪回）。",
+                "- action 节拍：▲ 动作行，zh 只写可视化动作描述正文（简体中文），**不要自带 ▲ 符号**；一句一个镜头，15-35 字，情绪写成可视化表情指令（瞳孔收缩、死死攥紧、冷笑）。",
+                "- dialogue 节拍：character=角色中文名，mood=情绪表演指令（2-6 字，如 压低声音，郑重），isVo=是否内心独白，en=地道美式英文台词，zh=与英文对应的简体中文对照——中文对照要比英文更口语、更「剧」，可增译情绪（如 \"Say her name again, I dare you.\" →「你有种再说一遍她的名字」）。en/zh 必须一一对应，不许漏译或自由发挥。",
+                "- caption 节拍：【字幕】，en=英文大字幕，zh=简体中文。三类用途：角色首登场身份卡（用人物小传里设计的 captionCard）、金额/关键信息特写、集尾【字幕：未完待续】。身份/金额/反转词要上字幕——它是唯一的强调手段。",
+                "- note 节拍：【闪切】/【特效】等制作说明，zh 只写内容正文（如 特效: 黑场 / 特效: 画面定格+金粉粒子 / 闪切: 九年前的雨夜…），**不要自带【】括号**。集尾视觉三板斧：定格→黑场/闪白→未完待续字幕。",
+                "- logline、premise、positionHint、promoName、场景头字段全部用简体中文（给你看的说明文字）；只有台词 en 和字幕 en 是英文。",
+                "",
+                "【成稿自检（去 AI 味）】",
+                DNA_DE_AI,
+                "",
+                LOCALIZATION_RULES,
+                "（剧本里的人名、地名、机构、冲突筹码、台词梗全部用欧美语境；英文台词严禁任何中式表达。）",
+                "",
+                conceptBlock,
+                "",
+                directionBlock,
+                "",
+                "===== 人物小传 =====",
+                JSON.stringify(foundationCard.characters, null, 2),
+                "",
+                "===== 本批集纲条目（剧本必须落在轨道上） =====",
+                `大期待：${foundationCard.outline.expectation}`,
+                `框架：${foundationCard.outline.framework}`,
+                `核心梗：${foundationCard.outline.coreGimmick}`,
+                JSON.stringify(rangeBeats, null, 2),
+                prevContext,
+                analysisBlock,
+                beatMapFor(reqStart, reqEnd) ? `\n${beatMapFor(reqStart, reqEnd)}` : "",
+                redBlock ? `\n${redBlock}` : "",
+              ].join("\n"),
+            });
+            for (const ep of chunk.episodes as EpisodeScript[]) {
+              if (ep.epNo >= start && ep.epNo <= end) collected.set(ep.epNo, ep);
+            }
+          }
+          const mergedPartial = [
             ...allEpisodes.filter((e) => e.epNo < start || e.epNo > end),
-            ...(chunk.episodes as EpisodeScript[]),
+            ...collected.values(),
           ].sort((x, y) => x.epNo - y.epNo);
-          const episodesPack: ConceptScriptPack = { ...partial, episodes: mergedEpisodes, status: "generating" };
+          const episodesPack: ConceptScriptPack = { ...partial, episodes: mergedPartial, status: "generating" };
+          // 已产出部分先落库（即使不完整也不浪费），再校验完整性
           await savePack(input.projectId, episodesPack);
+          const stillMissing = expected.filter((n) => !collected.has(n));
+          if (stillMissing.length) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `第 ${start}~${end} 集批次经 ${MAX_ROUNDS} 轮产出仍缺第 ${stillMissing.join("/")} 集（已产出部分已保存）。请从本批次续跑，系统只会补缺失的集，不会重复已产出的集。`,
+            });
+          }
           return episodesPack;
+        }
+
+        // 定稿闸门：首卡集数必须齐全（1~cardEpisodes 连续无缺），否则拒绝定稿，保持 generating 可续跑
+        {
+          const have = new Set(allEpisodes.map((e) => e.epNo));
+          const missingEps: number[] = [];
+          for (let n = 1; n <= cardEpisodes; n++) if (!have.has(n)) missingEps.push(n);
+          if (missingEps.length) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: `首卡缺第 ${missingEps.join("/")} 集，不能定稿。请从对应批次续跑补齐后再执行本步。`,
+            });
+          }
         }
 
         // 第 3 步（独立请求）：2 段不连贯投流素材（优先从首卡之后的付费墙/大反转节点挑）
