@@ -295,6 +295,11 @@ export function AnalysisView({
                   {ep.paywall && (
                     <span className="border border-destructive/50 bg-destructive/10 px-1.5 py-0.5 text-[9px] text-destructive">付费卡点</span>
                   )}
+                  {(ep.scenes || ep.lines) && (
+                    <span className="mono-label border border-border bg-muted/40 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                      体量 {ep.scenes ?? "?"}场 / {ep.lines ?? "?"}行
+                    </span>
+                  )}
                   <span className="ml-auto text-[10px] font-normal text-muted-foreground">集尾：{ep.cliffhangerType}</span>
                 </p>
                 <div className="mt-2 space-y-1">

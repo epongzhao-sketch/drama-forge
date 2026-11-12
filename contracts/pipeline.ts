@@ -23,6 +23,8 @@ export interface StoredSourceFile {
 export interface BeatMapEpisode {
   epNo: number;
   paywall?: boolean; // 该集是否付费卡点
+  scenes?: number;   // 该集场数（新剧按此对齐体量）
+  lines?: number;    // 该集英文台词行数（新剧按此对齐体量）
   beats: {
     position: string; // 节拍位置：开场 / 前段 / 中段 / 后段 / 集尾
     type: string;     // 节拍功能：视觉钩 / 受辱 / 隐忍 / 反转 / 打脸 / 身份危机 / 信息钩…

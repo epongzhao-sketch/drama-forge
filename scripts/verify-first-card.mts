@@ -16,10 +16,12 @@ const caller = appRouter.createCaller({ req: new Request("http://localhost/"), r
 const { id: projectId } = await caller.pipeline.create({ title: "首卡验证（自动清理）" });
 console.log("project:", projectId);
 
-// 2. 播种最小拆解（含 10 集节拍镜像表）
+// 2. 播种最小拆解（含 10 集节拍镜像表 + 每集体量目标：场数/台词行数）
 const beatMap = Array.from({ length: 10 }, (_, i) => ({
   epNo: i + 1,
   paywall: i + 1 === 5,
+  scenes: 2 + (i % 2),          // 交替 2/3 场，检验逐集对齐
+  lines: 18 + i * 2,            // 18~36 行递增，检验逐集对齐
   beats: [
     { position: "开场", type: i === 0 ? "视觉钩" : "承接悬念", summary: `第${i + 1}集开场节拍概括（功能级）`, intensity: 8 },
     { position: "中段", type: "受辱反击", summary: `第${i + 1}集冲突回合概括`, intensity: 7 },
@@ -82,8 +84,24 @@ console.log(`episodes: ${eps.length} 集, 集号: ${epNos.join(",")}`);
 const withMirror = eps.filter((e) => e.mirror?.mapping?.length).length;
 console.log(`带节拍镜像对照: ${withMirror}/${eps.length}`);
 console.log(`promoClips: ${pack.promoClips?.length}, 集号: ${pack.promoClips?.map((c) => c.epNo).join(",")}`);
-const ok = eps.length === 10 && epNos[0] === 1 && epNos[9] === 10 && (pack.promoClips?.length ?? 0) === 2;
-console.log(ok ? "PASS: 首卡 10 集全量 + 2 素材" : "FAIL: 产出不完整");
+
+// 5b. 逐集体量对齐校验（目标：场数误差 ≤1，台词行数误差 ≤20%）
+let volumePass = 0;
+for (const e of eps) {
+  const target = beatMap.find((b) => b.epNo === e.epNo);
+  if (!target) continue;
+  const scenes = e.scenes.length;
+  const lines = e.scenes.reduce((n, s) => n + s.beats.filter((b) => b.type === "dialogue").length, 0);
+  const scenesOk = Math.abs(scenes - target.scenes!) <= 1;
+  const linesOk = Math.abs(lines - target.lines!) <= Math.max(4, Math.ceil(target.lines! * 0.2));
+  if (scenesOk && linesOk) volumePass++;
+  console.log(`  EP${e.epNo}: 场 ${scenes}/${target.scenes}${scenesOk ? "✓" : "✗"}  台词行 ${lines}/${target.lines}${linesOk ? "✓" : "✗"}`);
+}
+const volumeOk = volumePass === eps.length;
+console.log(volumeOk ? `PASS: 体量对齐 ${volumePass}/${eps.length}` : `FAIL: 体量对齐 ${volumePass}/${eps.length}`);
+
+const ok = eps.length === 10 && epNos[0] === 1 && epNos[9] === 10 && (pack.promoClips?.length ?? 0) === 2 && volumeOk;
+console.log(ok ? "PASS: 首卡 10 集全量 + 2 素材 + 逐集体量对齐" : "FAIL: 产出不完整");
 
 // 6. 清理
 await caller.pipeline.remove({ id: projectId });
