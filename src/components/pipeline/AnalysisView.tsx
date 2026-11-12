@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import type { AnalysisResult } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,49 @@ export function AnalysisView({
   analysis: AnalysisResult | null;
   onDone: () => void;
 }) {
-  const runMut = trpc.pipeline.runAnalysis.useMutation({ onSuccess: onDone });
+  const startMut = trpc.stageJobs.start.useMutation();
+  const utils = trpc.useUtils();
+  const [running, setRunning] = useState(false);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 提交秒回 + 轮询进度：根治平台代理掐断长请求（Load failed），页面可关可刷新
+  const run = async () => {
+    setJobError(null);
+    try {
+      setRunning(true);
+      await startMut.mutateAsync({ projectId, kind: "analysis" });
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await utils.stageJobs.status.fetch({ projectId, kind: "analysis" });
+          if (st.status === "done") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setRunning(false);
+            onDone();
+          } else if (st.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setRunning(false);
+            setJobError(st.error ?? "拆解失败");
+          }
+        } catch {
+          // 单次轮询失败（网络抖动）下轮再试
+        }
+      }, 8000);
+    } catch (e) {
+      setRunning(false);
+      setJobError(e instanceof Error ? e.message : "提交失败");
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    },
+    [],
+  );
+
   // 旧版拆解报告没有六板块字段 / 逐集节拍镜像表 → 提示重新拆解
   const isLegacy = !!analysis && (!analysis.hook4 || !analysis.beatMap);
 
@@ -40,11 +83,11 @@ export function AnalysisView({
               并逐一解读你标红的爆款素材段为什么有效。
             </p>
           </div>
-          {runMut.isPending ? (
-            <Generating text="正在拆解爆款样本（约 1-2 分钟）…" />
+          {running ? (
+            <Generating text="正在后台拆解爆款样本（可离开本页，稍后可回来查看结果）…" />
           ) : (
             <Button
-              onClick={() => runMut.mutate({ projectId })}
+              onClick={() => void run()}
               disabled={!hasSample}
               className="h-11 px-6"
             >
@@ -52,7 +95,7 @@ export function AnalysisView({
             </Button>
           )}
         </div>
-        {runMut.error && <ErrorBox message={runMut.error.message} onRetry={() => runMut.mutate({ projectId })} />}
+        {jobError && <ErrorBox message={jobError} onRetry={() => void run()} />}
       </div>
     );
   }
@@ -66,12 +109,12 @@ export function AnalysisView({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => runMut.mutate({ projectId })}
-          disabled={runMut.isPending}
+          onClick={() => void run()}
+          disabled={running}
           className="h-9 gap-1.5"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${runMut.isPending ? "animate-spin" : ""}`} />
-          {runMut.isPending ? "拆解中…" : isLegacy ? "重新拆解（小黑DNA版）" : "重新拆解"}
+          <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} />
+          {running ? "拆解中…" : isLegacy ? "重新拆解（小黑DNA版）" : "重新拆解"}
         </Button>
       </div>
       {isLegacy && (
@@ -79,7 +122,7 @@ export function AnalysisView({
           这份报告是旧版——重新拆解后可获得六板块完整结构（EP1 四层钩拆解 / 付费墙位置表 / 人物四态弧线 / 母题复合与物件钩 / 换皮三关）+ 逐集节拍镜像表（节拍级复刻的骨架依据）。
         </p>
       )}
-      {runMut.error && <ErrorBox message={runMut.error.message} />}
+      {jobError && <ErrorBox message={jobError} />}
 
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="题材定位">
