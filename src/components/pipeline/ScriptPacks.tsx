@@ -333,10 +333,10 @@ export function ScriptPacks({
   onDone: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(pool?.selectedIds[0] ?? null);
-  const stepMut = trpc.pipeline.generateScriptPackStep.useMutation();
+  const startMut = trpc.packJobs.start.useMutation();
+  const utils = trpc.useUtils();
   const [progress, setProgress] = useState<{ conceptId: string; text: string } | null>(null);
-  // 失败续跑：记住失败步序号，某步被代理掐断后可从该步继续（已落库批次幂等覆盖，不会重复）
-  const [resumeAt, setResumeAt] = useState<{ conceptId: string; nextStep: number; total: number } | null>(null);
+  const [jobError, setJobError] = useState<{ conceptId: string; message: string } | null>(null);
 
   if (!pool || pool.selectedIds.length === 0) {
     return (
@@ -351,50 +351,62 @@ export function ScriptPacks({
   const legacy = activePack ? isLegacyPack(activePack) : false;
   const busyId = progress?.conceptId ?? null;
 
-  // 分步串行产出：每步一个独立请求（单步 3-8 分钟），避免平台代理掐断超长请求（单请求 20 分钟必死）
-  const runPack = async (conceptId: string, startStep = 0) => {
-    const card = Math.min(10, pool.totalEpisodes);
-    const batches = Math.ceil(card / 5);
-    const total = batches + 2;
-    const steps: { step: "foundation" | "episodes" | "promo"; batch: number; label: string }[] = [
-      { step: "foundation", batch: 0, label: "方向卡 + 人物小传 + 全剧集纲" },
-      ...Array.from({ length: batches }, (_, b) => ({
-        step: "episodes" as const,
-        batch: b,
-        label: `第 ${b * 5 + 1}~${Math.min(b * 5 + 5, card)} 集连贯剧本`,
-      })),
-      { step: "promo", batch: 0, label: "2 段投流素材" },
-    ];
-    let current = startStep;
+  // 异步产出：提交任务秒回，服务端后台逐步执行（每步落库），这里只轮询进度。
+  // 根治平台代理掐断长请求（Load failed）——页面关闭/刷新/断网都不影响产出，随时回来查看。
+  const runPack = async (conceptId: string, force = false) => {
+    setJobError(null);
     try {
-      setResumeAt(null);
-      for (; current < steps.length; current++) {
-        setProgress({ conceptId, text: `第 ${current + 1}/${total} 步：${steps[current].label}…` });
-        // 单步自动重试：平台链路偶发掐断长请求，每步最多尝试 3 次（间隔 5s），仍失败才转入断点续跑
-        let attempt = 0;
-        for (;;) {
-          try {
-            await stepMut.mutateAsync({ projectId, conceptId, step: steps[current].step, batch: steps[current].batch });
-            break;
-          } catch (e) {
-            attempt++;
-            if (attempt >= 3) throw e;
-            setProgress({
-              conceptId,
-              text: `第 ${current + 1}/${total} 步：${steps[current].label}…（连接中断，${attempt === 1 ? "5 秒后" : ""}自动重试第 ${attempt} 次）`,
-            });
-            await new Promise((r) => setTimeout(r, 5000));
-            setProgress({ conceptId, text: `第 ${current + 1}/${total} 步：${steps[current].label}…` });
-          }
+      setProgress({ conceptId, text: "提交产出任务…" });
+      await startMut.mutateAsync({ projectId, conceptId, force });
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 8000));
+        const st = await utils.packJobs.status.fetch({ projectId, conceptId });
+        if (st.status === "done") {
+          setProgress(null);
+          onDone();
+          return;
+        }
+        if (st.status === "failed") {
+          setProgress(null);
+          setJobError({ conceptId, message: st.error ?? "产出失败" });
+          return;
+        }
+        if (st.status === "running") {
+          const total = st.totalSteps || 4;
+          setProgress({
+            conceptId,
+            text: `第 ${Math.min(st.stepIndex + 1, total)}/${total} 步：${st.stepLabel}…${
+              st.attempt ? `（本步自动重试第 ${st.attempt} 次）` : ""
+            }`,
+          });
         }
       }
-      onDone();
-    } catch {
-      // 失败保留续跑位置：从失败步继续（之前已落库的批次幂等覆盖，不会重复）
-      setResumeAt({ conceptId, nextStep: current, total });
-    } finally {
+    } catch (e) {
       setProgress(null);
+      setJobError({ conceptId, message: e instanceof Error ? e.message : "提交失败" });
     }
+  };
+
+  const statusBadge = (id: string) => {
+    const pack = packMap.get(id);
+    const generating = busyId === id;
+    if (pack && pack.status === "done") return { cls: "bg-[hsl(var(--mint))]/10 text-[hsl(var(--mint))]", text: "已产出" };
+    if (pack?.status === "generating") return { cls: "bg-primary/10 text-primary", text: generating ? "生成中" : "产出中（可继续）" };
+    if (generating) return { cls: "bg-primary/10 text-primary", text: "生成中" };
+    return { cls: "bg-secondary text-muted-foreground", text: "待生成" };
+  };
+
+  const buttonLabel = (id: string): string => {
+    if (busyId === id) return "正在产出剧本包…";
+    const pack = packMap.get(id);
+    if (pack?.status === "generating") return "继续产出（从断点续跑）";
+    if (pack?.status === "done") return "重新产出";
+    if (legacy) return "重新产出（新版格式）";
+    return "产出该方案的剧本包";
+  };
+  const buttonForce = (id: string): boolean => {
+    const pack = packMap.get(id);
+    return pack?.status === "done" || legacy;
   };
 
   return (
@@ -402,8 +414,7 @@ export function ScriptPacks({
       <div className="flex flex-wrap gap-2">
         {pool.selectedIds.map((id) => {
           const concept = pool.concepts.find((c) => c.id === id);
-          const pack = packMap.get(id);
-          const generating = busyId === id;
+          const badge = statusBadge(id);
           return (
             <button key={id} onClick={() => setActiveId(id)}
               className={`panel flex items-center gap-2 px-3.5 py-2.5 text-left text-xs transition-colors ${
@@ -411,11 +422,7 @@ export function ScriptPacks({
               }`}>
               <Clapperboard className="h-3.5 w-3.5 text-primary" />
               <span className="font-medium">{concept?.title ?? id}</span>
-              <span className={`mono-label px-1 py-0.5 text-[9px] ${
-                pack && pack.status === "done" ? "bg-[hsl(var(--mint))]/10 text-[hsl(var(--mint))]" : pack ? "bg-primary/10 text-primary" : generating ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
-              }`}>
-                {pack && pack.status === "done" ? "已产出" : pack ? "产出中" : generating ? "生成中" : "待生成"}
-              </span>
+              <span className={`mono-label px-1 py-0.5 text-[9px] ${badge.cls}`}>{badge.text}</span>
             </button>
           );
         })}
@@ -423,41 +430,44 @@ export function ScriptPacks({
 
       {activeId && (
         <div>
-          {(!activePack || legacy) && (
+          {(!activePack || legacy || activePack.status === "generating") && (
             <div className="panel px-4 py-8 text-center">
               {legacy && (
                 <p className="mb-3 text-xs text-muted-foreground">
                   该剧本包是旧版格式——重新产出后可获得小黑DNA新版结构：方向卡（含母题复合/物件钩/色彩编码）+ 人物小传（四态弧线+登场字幕卡）+ 全剧集纲（付费墙布局）+ 中文工作稿剧本。
                 </p>
               )}
-              <Button onClick={() => void runPack(activeId, resumeAt?.conceptId === activeId ? resumeAt.nextStep : 0)} disabled={!!busyId}>
-                {busyId === activeId
-                  ? "正在产出剧本包…"
-                  : resumeAt?.conceptId === activeId
-                    ? `从第 ${resumeAt.nextStep + 1}/${resumeAt.total} 步继续`
-                    : legacy
-                      ? "重新产出（新版格式）"
-                      : "产出该方案的剧本包"}
-              </Button>
-              {progress?.conceptId === activeId && <Generating text={`${progress.text}（每步约 3-8 分钟，全程约 15-40 分钟，请保持页面打开；中断后可从失败步骤继续）`} />}
-              {stepMut.error && <ErrorBox message={stepMut.error.message} />}
-              {resumeAt?.conceptId === activeId && !progress && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  上次的产出在第 {resumeAt.nextStep + 1}/{resumeAt.total} 步中断，点上方按钮可从该步继续（已完成的步骤不会重复）。
+              {activePack?.status === "generating" && !legacy && (
+                <p className="mb-3 text-xs text-muted-foreground">
+                  该方案已有产出进度（已落库 {activePack.episodes?.length ?? 0} 集）——继续产出只会补未完成的部分，不会重复。
                 </p>
+              )}
+              <Button onClick={() => void runPack(activeId, buttonForce(activeId))} disabled={!!busyId}>
+                {buttonLabel(activeId)}
+              </Button>
+              {progress?.conceptId === activeId && (
+                <Generating text={`${progress.text}（全程约 15-40 分钟；服务端后台产出，页面可关闭，随时回来查看进度）`} />
+              )}
+              {jobError?.conceptId === activeId && !progress && (
+                <>
+                  <ErrorBox message={jobError.message} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    任务已在服务端保留断点，点上方按钮重试即可从断点继续，已完成的步骤不会重复。
+                  </p>
+                </>
               )}
             </div>
           )}
-          {activePack && !legacy && (
+          {activePack && !legacy && activePack.status === "done" && (
             <>
               <div className="mb-3 flex justify-end">
                 <Button size="sm" variant="secondary" disabled={!!busyId}
-                  onClick={() => void runPack(activeId, resumeAt?.conceptId === activeId ? resumeAt.nextStep : 0)}>
-                  {resumeAt?.conceptId === activeId ? `从第 ${resumeAt.nextStep + 1}/${resumeAt.total} 步继续` : "重新产出"}
+                  onClick={() => void runPack(activeId, buttonForce(activeId))}>
+                  {buttonLabel(activeId)}
                 </Button>
               </div>
               {progress?.conceptId === activeId && <Generating text={`${progress.text}（全程约 15-40 分钟）`} />}
-              {stepMut.error && <ErrorBox message={stepMut.error.message} />}
+              {jobError?.conceptId === activeId && <ErrorBox message={jobError.message} />}
               <PackView pack={activePack} />
             </>
           )}
