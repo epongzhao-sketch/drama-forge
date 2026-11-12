@@ -6,6 +6,8 @@ import './index.css'
 import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
 
+console.info("[drama-forge] build v37c-stage-async-1730");
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
