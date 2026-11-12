@@ -1,5 +1,5 @@
 // 编审定稿阶段：审阅各入选方案的剧本包 → 判档质检 → 选定最终 1 个
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import type { RemapPool, ConceptScriptPack, EvalReport } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,53 @@ export function Finalize({
 }) {
   const [activeId, setActiveId] = useState<string | null>(pool?.selectedIds[0] ?? null);
   const finalMut = trpc.pipeline.finalizeConcept.useMutation({ onSuccess: onDone });
-  const evalMut = trpc.pipeline.evaluatePack.useMutation({ onSuccess: onDone });
+  // 判档质检改异步：提交秒回 + 轮询（根治平台代理掐断长请求）
+  const evalStartMut = trpc.stageJobs.start.useMutation();
+  const utils = trpc.useUtils();
+  const [evalRunning, setEvalRunning] = useState(false);
+  const [evalConceptId, setEvalConceptId] = useState<string | null>(null);
+  const [evalError, setEvalError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const runEval = async (conceptId: string) => {
+    setEvalError(null);
+    try {
+      setEvalRunning(true);
+      setEvalConceptId(conceptId);
+      await evalStartMut.mutateAsync({ projectId, kind: "evaluate", conceptId });
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await utils.stageJobs.status.fetch({ projectId, kind: "evaluate", conceptId });
+          if (st.status === "done") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setEvalRunning(false);
+            setEvalConceptId(null);
+            onDone();
+          } else if (st.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setEvalRunning(false);
+            setEvalConceptId(null);
+            setEvalError(st.error ?? "判档质检失败");
+          }
+        } catch {
+          // 单次轮询失败下轮再试
+        }
+      }, 8000);
+    } catch (e) {
+      setEvalRunning(false);
+      setEvalConceptId(null);
+      setEvalError(e instanceof Error ? e.message : "提交失败");
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    },
+    [],
+  );
 
   if (!pool || pool.selectedIds.length === 0) {
     return (
@@ -64,19 +110,19 @@ export function Finalize({
       {activeId && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" disabled={!activePack || legacy || evalMut.isPending}
-              onClick={() => evalMut.mutate({ projectId, conceptId: activeId })}>
+            <Button size="sm" variant="secondary" disabled={!activePack || legacy || evalRunning}
+              onClick={() => void runEval(activeId)}>
               <ShieldCheck className="h-3.5 w-3.5" />
-              {evalMut.isPending ? "判档质检中…" : "判档质检"}
+              {evalRunning && evalConceptId === activeId ? "判档质检中…" : "判档质检"}
             </Button>
             <Button size="sm" disabled={!activePack || legacy || finalMut.isPending || isFinal(activeId)}
               onClick={() => finalMut.mutate({ projectId, conceptId: activeId })}>
               {isFinal(activeId) ? "✓ 已定稿" : "选定此方案为最终成品"}
             </Button>
             {finalMut.error && <ErrorBox message={finalMut.error.message} />}
-            {evalMut.error && <ErrorBox message={evalMut.error.message} />}
+            {evalError && <ErrorBox message={evalError} />}
           </div>
-          {evalMut.isPending && <Generating text="判档质检中（建议性报告）…" />}
+          {evalRunning && evalConceptId === activeId && <Generating text="判档质检中（后台运行，可离开本页）…" />}
           {packEval && activePack && !legacy && <EvalReportView report={packEval} />}
 
           {!activePack ? (
