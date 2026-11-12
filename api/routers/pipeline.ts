@@ -496,7 +496,7 @@ export const pipelineRouter = createRouter({
       z.object({
         projectId: z.number(),
         content: z.string().min(10).max(200000),
-        redSegments: z.array(redSegmentSchema).max(1000),
+        redSegments: z.array(redSegmentSchema).max(5000),
         sourceFile: z
           .object({
             name: z.string().max(255),
@@ -537,7 +537,8 @@ export const pipelineRouter = createRouter({
       await ensureProject(ctx.user.id, input.projectId);
       const { sample } = await loadContext(input.projectId);
       if (!sample) throw new TRPCError({ code: "BAD_REQUEST", message: "请先录入爆款样本" });
-      const segs = (sample.redSegments ?? []) as RedSegment[];
+      // 红标段只注入前 200 段：超过这个量级时全文已基本标红，全量注入只会撑爆 prompt（每段一对标记）
+      const segs = ((sample.redSegments ?? []) as RedSegment[]).slice(0, 200);
       const marked = injectRedMarkers(sample.content.slice(0, MAX_SAMPLE_CHARS), segs);
       try {
         const { object } = await generateObjectStreamed({
