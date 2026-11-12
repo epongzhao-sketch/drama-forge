@@ -1,5 +1,5 @@
 // 换皮方案阶段：AI 一次产出 10 个方案 → 人工粗选 3~5 个进入剧本产出
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import type { AnalysisResult, RemapPool } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,60 @@ export function RemapConcepts({
   const [totalEpisodes, setTotalEpisodes] = useState(pool?.totalEpisodes ?? 60);
   const [episodeSeconds, setEpisodeSeconds] = useState(pool?.episodeSeconds ?? 75);
   const [notes, setNotes] = useState(pool?.notes ?? "");
-  const [picked, setPicked] = useState<Set<string>>(new Set(pool?.selectedIds ?? []));
+  // 过滤脏 selectedIds：库里可能存着已被重新生成淘汰的旧方案 id，避免勾选项与方案列表对不上
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set((pool?.selectedIds ?? []).filter((id) => pool?.concepts.some((c) => c.id === id))),
+  );
 
-  const genMut = trpc.pipeline.generateConcepts.useMutation({ onSuccess: onSaved });
+  // 异步生成：提交秒回 + 轮询进度（根治平台代理掐断长请求）
+  const genStartMut = trpc.stageJobs.start.useMutation();
+  const utils = trpc.useUtils();
+  const [genRunning, setGenRunning] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const runGen = async () => {
+    setGenError(null);
+    try {
+      setGenRunning(true);
+      await genStartMut.mutateAsync({
+        projectId,
+        kind: "concepts",
+        totalEpisodes,
+        episodeSeconds,
+        notes: notes || undefined,
+      });
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await utils.stageJobs.status.fetch({ projectId, kind: "concepts" });
+          if (st.status === "done") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setGenRunning(false);
+            onSaved();
+          } else if (st.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setGenRunning(false);
+            setGenError(st.error ?? "生成失败");
+          }
+        } catch {
+          // 单次轮询失败下轮再试
+        }
+      }, 8000);
+    } catch (e) {
+      setGenRunning(false);
+      setGenError(e instanceof Error ? e.message : "提交失败");
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    },
+    [],
+  );
+
   const selMut = trpc.pipeline.selectConcepts.useMutation({ onSuccess: onSaved });
 
   const toggle = (id: string) => {
@@ -62,15 +113,15 @@ export function RemapConcepts({
             placeholder="例：偏向女频复仇赛道，避开校园题材…" />
         </div>
         <div className="mt-4">
-          <Button onClick={() => genMut.mutate({ projectId, totalEpisodes, episodeSeconds, notes: notes || undefined })}
-            disabled={!analysis || genMut.isPending}>
+          <Button onClick={() => void runGen()}
+            disabled={!analysis || genRunning}>
             <Sparkles className="h-4 w-4" />
-            {genMut.isPending ? "AI 正在产出 10 个方案…" : pool ? "重新生成 10 个换皮方案" : "生成 10 个换皮方案"}
+            {genRunning ? "AI 正在后台产出 10 个方案…" : pool ? "重新生成 10 个换皮方案" : "生成 10 个换皮方案"}
           </Button>
           {!analysis && <p className="mt-2 text-xs text-muted-foreground">需要先完成 AI 拆解。</p>}
         </div>
-        {genMut.isPending && <Generating text="锁定核心期待，正在为同一期待换 10 种元素外皮（约 1-3 分钟）…" />}
-        {genMut.error && <ErrorBox message={genMut.error.message} />}
+        {genRunning && <Generating text="锁定核心期待，正在为同一期待换 10 种元素外皮（后台运行，可离开本页）…" />}
+        {genError && <ErrorBox message={genError} onRetry={() => void runGen()} />}
       </section>
 
       {/* 方案列表 */}
