@@ -13,12 +13,6 @@ import type { TrpcContext } from "../context";
 type JobUser = NonNullable<TrpcContext["user"]>;
 type StageKind = "analysis" | "concepts" | "evaluate";
 
-const KIND_LABEL: Record<StageKind, string> = {
-  analysis: "AI 拆解爆款样本",
-  concepts: "生成 10 个换皮方案",
-  evaluate: "判档质检",
-};
-
 interface StageJob {
   key: string;
   kind: StageKind;
@@ -56,7 +50,7 @@ async function ensureProject(userId: number, projectId: number) {
 }
 
 /** 完成判定的落库真值 */
-async function dbDone(kind: StageKind, projectId: number, conceptId?: string): Promise<boolean> {
+async function dbDone(kind: StageKind, projectId: number, _conceptId?: string): Promise<boolean> {
   const db = getDb();
   if (kind === "analysis") {
     const [r] = await db.select().from(analyses).where(eq(analyses.projectId, projectId));
