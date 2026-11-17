@@ -7,6 +7,8 @@
 
 海外 viral 短剧「换皮复刻」全流程工具。用户上传一部爆款短剧样本（英文/中英），AI 拆解其爆款基因 → 锁定核心期待、只换元素外皮生成 10 个换皮方案 → 人工粗选 3~5 个 → 每个方案产出完整剧本包（方向卡 + 人物小传 + 全剧集纲 + 首卡 1~10 集全量连贯剧本 + 投流素材）→ 编审判档定稿。
 
+本仓库已开源（Apache-2.0）。**红线：线上站点地址、任何密钥永不写入仓库**——地址只配在本地/平台侧 `.env`（`SITE_URL`），密钥只存在于部署环境。访问控制由 `ALLOWED_UNION_IDS` 白名单承担（见「环境变量」）。
+
 内容方法论基于「小黑DNA」：65 部海外竖屏短剧（约 3420 集 / 5.5 万行英文台词）蒸馏出的写作 DNA，已物化为 `api/ai/dna.ts` 注入各环节 prompt。
 
 ## 技术栈与架构
@@ -15,7 +17,7 @@
 - **后端**：Hono + tRPC 11（`api/`），入口 `api/boot.ts`
 - **数据库**：MySQL 8（线上是 TiDB），Drizzle ORM（`db/schema.ts`）
 - **AI**：OpenAI 兼容网关走 `@ai-sdk/openai-compatible`（`api/ai/provider.ts`）；扫描件视觉转写走 Anthropic 兼容协议（`api/ai/vision.ts`）
-- **登录**：Kimi 开放平台 OAuth 2.0 + JWT 会话（`api/kimi/`、`api/queries/users.ts`）
+- **登录**：Kimi 开放平台 OAuth 2.0 + JWT 会话（`api/kimi/`、`api/queries/users.ts`）；白名单闸门 `api/lib/access.ts`
 - **共享类型**：`contracts/pipeline.ts`——前后端唯一的类型事实来源
 
 ### 目录速查
@@ -27,6 +29,7 @@ api/ai/          AI 接入层
   dna.ts         小黑DNA 注入常量（L1 语言/L2 结构/L3-5 认知/L6 视觉/去AI味）+ 语料索引
   dna/           DNA 蒸馏文档原文 + corpus-index.json（80 部剧元数据）
   evaluator.ts   编审判档 prompt（撒冷方法论 v1.6.5）
+api/lib/access.ts         登录白名单 isLoginAllowed()（开源后防陌生人使用线上实例的闸门）
 api/routers/pipeline.ts   核心业务：五阶段流水线全部 tRPC 过程与 prompt
 api/routes/upload.ts      文件上传 + 视觉转写（NDJSON 流式进度）
 src/components/pipeline/  五阶段 UI 组件
@@ -41,7 +44,17 @@ src/pages/Workspace.tsx   工作区主页面
 
 ## 环境变量
 
-`.env`（勿提交公开仓库）：`APP_ID/APP_SECRET`（OAuth 应用）、`VITE_KIMI_AUTH_URL/VITE_APP_ID/KIMI_AUTH_URL/KIMI_OPEN_URL`（Kimi 登录服务）、`DATABASE_URL`、`KIMI_AGENTGW_BASE_URL/KIMI_AGENTGW_API_KEY`（AI 网关）、`OWNER_UNION_ID`（首个登录者为 admin）。
+`.env`（勿提交公开仓库）：`APP_ID/APP_SECRET`（OAuth 应用）、`VITE_KIMI_AUTH_URL/VITE_APP_ID/KIMI_AUTH_URL/KIMI_OPEN_URL`（Kimi 登录服务）、`DATABASE_URL`、`KIMI_AGENTGW_BASE_URL/KIMI_AGENTGW_API_KEY`（AI 网关）、`OWNER_UNION_ID`（首个登录者为 admin）、`ALLOWED_UNION_IDS`/`SITE_URL`（访问控制与体检，见下）。
+
+**访问控制**（`api/lib/access.ts` 的 `isLoginAllowed`，OAuth 回调签发 session 时校验一次、`authenticateRequest` 每次请求再校验一次，改配置即时生效）：
+
+1. `ALLOWED_UNION_IDS`（逗号分隔）非空 → 只放行列表内 unionId（**配置时把 owner 一并列入**，列表是唯一依据）；
+2. 未配白名单但设了 `OWNER_UNION_ID` → 仅 owner 可登录（线上单租户默认）；
+3. 两者都未设 → 不限（自托管默认值）。
+
+`SITE_URL` 只用于 `npm run healthcheck` 指定体检目标，只写本地 `.env`。
+
+分支逻辑自检（不连数据库）：`npx tsx -r dotenv/config ./scripts/verify-access-gate.mts`。
 
 ## 常用命令
 
@@ -51,7 +64,7 @@ npm run dev        # Vite 开发（前后端同端口 3000）
 npm run check      # 全量类型检查（改完必跑）
 npm run build      # 前端 vite build + esbuild 打包后端为 dist/boot.js
 npm start          # 生产运行（需 NODE_ENV=production 才监听端口）
-npm run healthcheck  # 线上站点一键体检（5 项检查，详见 运维手册.md）
+npm run healthcheck  # 线上站点一键体检（5 项检查，需本地 .env 配 SITE_URL，详见 运维手册.md）
 ```
 
 **防回归纪律**：任何改动必须 `npm run check` 通过 + 本地实测通过后才能 push；push 后提醒用户到 Kimi Desktop 同步部署，部署后跑 `npm run healthcheck` 确认线上无恙。线上故障处置见 `运维手册.md`。
@@ -64,12 +77,12 @@ npm run healthcheck  # 线上站点一键体检（5 项检查，详见 运维手
 
 ```
 Kimi Code（你）：日常开发 —— 改代码 → npm run check / build 验证 → 提交并推送到 GitHub 仓库
-Kimi（站长侧）：发布 —— 用户说"同步 GitHub 最新代码"时，由 Kimi 拉取、构建、存版本，kimi.site 线上更新
+Kimi（站长侧）：发布 —— 用户说"同步 GitHub 最新代码"时，由 Kimi 拉取、构建、存版本，线上站点更新
 ```
 
-- **你没有部署通道**：线上实例（fpfpvr42xwsdq.kimi.site）跑在 Kimi 平台的版本系统里（托管、数据库、OAuth 凭证都在平台侧），改完代码无法自行上线——你的工作边界是「把验证过的代码推到 GitHub 仓库」。
+- **你没有部署通道**：线上实例跑在 Kimi 平台的版本系统里（托管、数据库、OAuth 凭证都在平台侧；站点地址只配在本地 `.env` 的 `SITE_URL`，仓库里不出现），改完代码无法自行上线——你的工作边界是「把验证过的代码推到 GitHub 仓库」。
 - **标准迭代流程**：开发 → `npm run check` 零错误 → `npm run build` 通过 → 本地冒烟（`NODE_ENV=production node dist/boot.js` + curl 首页）→ commit & push → 提醒用户「让 Kimi 同步发布」。
-- **推送入口**：`git remote add origin https://github.com/epongzhao-sketch/drama-forge.git && git push`（仓库已建好，含 README/AGENTS.md；首次推送会把完整历史带上）。
+- **推送入口**：`git remote add origin https://github.com/epongzhao-sketch/drama-forge.git && git push`（仓库已建好并含完整历史；日常 `git pull` / `git push` 即可）。
 - **数据库红线**：`.env` 里的 `DATABASE_URL` 指向**线上 TiDB 生产数据**。日常开发务必切换成本地 MySQL（交接包 docker-compose.yml 自带），绝不在生产库上跑实验性迁移。
 - **若用户决定迁出 Kimi 平台自托管**：用交接包里的 Dockerfile + docker-compose.yml，那时你将获得完整部署权（服务器+数据库都归你管），本分工即失效。
 

@@ -1,7 +1,13 @@
 {
-  "name": "my-app",
-  "private": true,
-  "version": "0.0.0",
+  "name": "drama-forge",
+  "description": "爆剧复刻舱 Drama Forge —— 海外 viral 短剧换皮复刻全流程工具（拆解 → 换皮方案 → 剧本包 → 编审判档）",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/epongzhao-sketch/drama-forge"
+  },
+  "private": false,
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

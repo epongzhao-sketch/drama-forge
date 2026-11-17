@@ -9,6 +9,7 @@ import { Errors } from "@contracts/errors";
 import { signSessionToken, verifySessionToken } from "./session";
 import { users as kimiUsers } from "./platform";
 import { findUserByUnionId, upsertUser } from "../queries/users";
+import { isLoginAllowed } from "../lib/access";
 import type { TokenResponse } from "./types";
 
 async function exchangeAuthCode(
@@ -68,6 +69,10 @@ export async function authenticateRequest(headers: Headers) {
   if (!user) {
     throw Errors.forbidden("User not found. Please re-login.");
   }
+  if (!isLoginAllowed(user.unionId)) {
+    console.warn("[auth] Request denied, unionId not allowlisted:", user.unionId);
+    throw Errors.forbidden("Access denied: account not on the allowlist.");
+  }
   return user;
 }
 
@@ -96,6 +101,14 @@ export function createOAuthCallbackHandler() {
       const redirectUri = atob(state).trim();
       const tokenResp = await exchangeAuthCode(code, redirectUri);
       const { userId } = await verifyAccessToken(tokenResp.access_token);
+      // 白名单闸门：拿到 unionId 先判再放行，不放行就不为用户建档、不消耗后续调用
+      if (!isLoginAllowed(userId)) {
+        console.warn("[auth] OAuth login denied, unionId not allowlisted:", userId);
+        return c.text(
+          "Access denied: this account is not on the allowlist of this site. / 该账号不在本站访问白名单内。",
+          403,
+        );
+      }
       const userProfile = await kimiUsers.getProfile(tokenResp.access_token);
       if (!userProfile) {
         throw new Error("Failed to fetch user profile from Kimi Open");

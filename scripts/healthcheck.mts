@@ -1,7 +1,11 @@
 // 线上站点一键体检：npm run healthcheck
 // 只读公开端点，不触碰数据库。任一检查失败以非零码退出。
-// 可用 SITE_URL 环境变量覆盖目标（默认生产站点）。
-const SITE = process.env.SITE_URL ?? "https://fpfpvr42xwsdq.kimi.site";
+// 目标站点必须经 SITE_URL 指定：线上地址只写在本地 .env，不进仓库。
+const SITE = process.env.SITE_URL ?? "";
+if (!SITE) {
+  console.error("未设置 SITE_URL：请先把线上站点地址写入本地 .env（SITE_URL=https://…）。");
+  process.exit(1);
+}
 const APP_ID = process.env.APP_ID ?? "";
 
 type Check = { name: string; run: () => Promise<void> };
