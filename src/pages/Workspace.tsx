@@ -86,7 +86,7 @@ export default function Workspace() {
               ? { done: true, doneText: `已产出 ${status.packCount}/${status.selectedCount} 个剧本包，可继续产出，也可以直接去定稿`, todo: "" }
               : { done: true, doneText: `${status.packCount} 个剧本包全部产出`, todo: "" },
       final: status.hasFinal
-        ? { done: true, doneText: "已选定最终成品，本项目完成 🎉", todo: "" }
+        ? { done: true, doneText: "已选定最终成品 🎉——可在编审定稿页「继续生成全集剧本」把第 11 集续写至大结局", todo: "" }
         : status.packCount === 0
           ? { done: false, doneText: "", todo: "还没有剧本包可审，请先在「剧本产出」生成", todoStage: "pack" }
           : { done: false, doneText: "", todo: "逐个审阅剧本包（可先跑判档质检），点「选定此方案为最终成品」" },

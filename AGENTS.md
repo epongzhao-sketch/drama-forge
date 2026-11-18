@@ -30,7 +30,9 @@ api/ai/          AI 接入层
   dna/           DNA 蒸馏文档原文 + corpus-index.json（80 部剧元数据）
   evaluator.ts   编审判档 prompt（撒冷方法论 v1.6.5）
 api/lib/access.ts         登录白名单 isLoginAllowed()（开源后防陌生人使用线上实例的闸门）
-api/routers/pipeline.ts   核心业务：五阶段流水线全部 tRPC 过程与 prompt
+api/routers/pipeline.ts   核心业务：五阶段流水线全部 tRPC 过程与 prompt（generateScriptPackStep 的 series 步 = 首卡之后续写全集）
+api/routers/packJobs.ts   首卡剧本包异步产出任务（foundation→episodes 分批→promo，断点自愈）
+api/routers/seriesJobs.ts 全集续写异步任务（编审定稿后：第 11~总集数逐批续写，幂等追加 episodes，断点自愈）
 api/routes/upload.ts      文件上传 + 视觉转写（NDJSON 流式进度）
 src/components/pipeline/  五阶段 UI 组件
 src/pages/Workspace.tsx   工作区主页面
@@ -38,7 +40,9 @@ src/pages/Workspace.tsx   工作区主页面
 
 ## 五阶段流水线数据流
 
-`projects` → `samples`（剧本原文+红标段 redSegments）→ `analyses`（六板块拆解报告）→ `remaps.settings`（RemapPool：10 方案 + selectedIds 粗选 + finalId 定稿）→ `script_packs.pack`（ConceptScriptPack）→ `evaluations`（判档报告）
+`projects` → `samples`（剧本原文+红标段 redSegments）→ `analyses`（六板块拆解报告）→ `remaps.settings`（RemapPool：10 方案 + selectedIds 粗选 + finalId 定稿 + 总集数/单集秒数）→ `script_packs.pack`（ConceptScriptPack）→ `evaluations`（判档报告）
+
+定稿后 `seriesJobs` 把 `script_packs.pack.episodes` 从首卡（1~10 集）逐批续写至 `totalEpisodes`（每批 5 集，按集号幂等合并，不改 pack.status，进程重启按缺集自愈）。
 
 所有 JSON 大件存在各表的 JSON 列里，类型见 `contracts/pipeline.ts`。
 

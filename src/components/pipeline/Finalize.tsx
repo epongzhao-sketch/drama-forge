@@ -1,4 +1,4 @@
-// 编审定稿阶段：审阅各入选方案的剧本包 → 判档质检 → 选定最终 1 个
+// 编审定稿阶段：审阅各入选方案的剧本包 → 判档质检 → 选定最终 1 个 → （定稿后）续写全集剧本
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import type { RemapPool, ConceptScriptPack, EvalReport } from "@contracts/pipeline";
@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
 import { EvalReportView } from "@/components/pipeline/EvalReportView";
 import { EpisodeDoc, SceneBlock, BeatMirrorView, isLegacyPack } from "@/components/pipeline/ScriptDoc";
-import { ShieldCheck, Trophy } from "lucide-react";
+import { ShieldCheck, Trophy, ListVideo } from "lucide-react";
+
+const FIRST_CARD_EPISODES = 10;
 
 export function Finalize({
   projectId,
@@ -25,11 +27,18 @@ export function Finalize({
   const finalMut = trpc.pipeline.finalizeConcept.useMutation({ onSuccess: onDone });
   // 判档质检改异步：提交秒回 + 轮询（根治平台代理掐断长请求）
   const evalStartMut = trpc.stageJobs.start.useMutation();
+  // 全集续写改异步：提交秒回 + 轮询；断点服务端托管，页面关闭不影响产出
+  const seriesStartMut = trpc.seriesJobs.start.useMutation();
   const utils = trpc.useUtils();
   const [evalRunning, setEvalRunning] = useState(false);
   const [evalConceptId, setEvalConceptId] = useState<string | null>(null);
   const [evalError, setEvalError] = useState<string | null>(null);
+  const [seriesRunning, setSeriesRunning] = useState(false);
+  const [seriesConceptId, setSeriesConceptId] = useState<string | null>(null);
+  const [seriesText, setSeriesText] = useState("");
+  const [seriesError, setSeriesError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const seriesPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const runEval = async (conceptId: string) => {
     setEvalError(null);
@@ -64,9 +73,50 @@ export function Finalize({
     }
   };
 
+  const runSeries = async (conceptId: string) => {
+    setSeriesError(null);
+    try {
+      setSeriesRunning(true);
+      setSeriesConceptId(conceptId);
+      await seriesStartMut.mutateAsync({ projectId, conceptId });
+      seriesPollRef.current = setInterval(async () => {
+        try {
+          const st = await utils.seriesJobs.status.fetch({ projectId, conceptId });
+          if (st.status === "done") {
+            if (seriesPollRef.current) clearInterval(seriesPollRef.current);
+            seriesPollRef.current = null;
+            setSeriesRunning(false);
+            setSeriesConceptId(null);
+            setSeriesText("");
+            onDone();
+          } else if (st.status === "failed") {
+            if (seriesPollRef.current) clearInterval(seriesPollRef.current);
+            seriesPollRef.current = null;
+            setSeriesRunning(false);
+            setSeriesConceptId(null);
+            setSeriesError(st.error ?? "全集续写失败");
+          } else if (st.status === "running") {
+            const total = st.totalSteps || 1;
+            setSeriesText(
+              `第 ${Math.min(st.stepIndex + 1, total)}/${total} 批：${st.stepLabel}…（已存 ${st.episodesDone}/${st.targetEpisodes} 集` +
+                `${st.attempt ? `，本批自动重试第 ${st.attempt} 次` : ""}）`,
+            );
+          }
+        } catch {
+          // 单次轮询失败下轮再试
+        }
+      }, 8000);
+    } catch (e) {
+      setSeriesRunning(false);
+      setSeriesConceptId(null);
+      setSeriesError(e instanceof Error ? e.message : "提交失败");
+    }
+  };
+
   useEffect(
     () => () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (seriesPollRef.current) clearInterval(seriesPollRef.current);
     },
     [],
   );
@@ -83,11 +133,24 @@ export function Finalize({
   const activePack = activeId ? packMap.get(activeId) : undefined;
   const legacy = activePack ? isLegacyPack(activePack) : false;
   const isFinal = (id: string) => pool.finalId === id;
+  const cardEps = Math.min(FIRST_CARD_EPISODES, pool.totalEpisodes);
+  const seriesTarget = pool.totalEpisodes;
+  const seriesDone = (activePack?.episodes.length ?? 0) >= seriesTarget;
+  const seriesStarted = (activePack?.episodes.length ?? 0) > cardEps;
+  const seriesAvailable =
+    !!activePack && !legacy && activePack.status === "done" && seriesTarget > cardEps;
+
+  const seriesButtonLabel = (): string => {
+    if (seriesRunning && seriesConceptId === activeId) return "全集续写中…";
+    if (seriesDone) return `✓ 全集已完成（${seriesTarget} 集）`;
+    if (seriesStarted) return `继续生成全集（断点续写 ${activePack?.episodes.length}/${seriesTarget} 集）`;
+    return `继续生成全集剧本（第 ${cardEps + 1}~${seriesTarget} 集）`;
+  };
 
   return (
     <div className="space-y-5">
       <div className="panel border-primary/30 bg-primary/5 px-4 py-3 text-xs text-muted-foreground">
-        编审流程：逐个审阅入选方案的剧本包（可跑判档质检），选定最优的 1 个作为最终成品。
+        编审流程：逐个审阅入选方案的剧本包（可跑判档质检），选定最优的 1 个作为最终成品；定稿后可一键续写全集剧本（第 {cardEps + 1}~{seriesTarget} 集，逐批后台产出）。
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -119,10 +182,32 @@ export function Finalize({
               onClick={() => finalMut.mutate({ projectId, conceptId: activeId })}>
               {isFinal(activeId) ? "✓ 已定稿" : "选定此方案为最终成品"}
             </Button>
+            {seriesAvailable && (
+              <Button size="sm" variant="secondary"
+                disabled={seriesDone || seriesRunning || evalRunning || finalMut.isPending}
+                onClick={() => void runSeries(activeId)}>
+                <ListVideo className="h-3.5 w-3.5" />
+                {seriesButtonLabel()}
+              </Button>
+            )}
             {finalMut.error && <ErrorBox message={finalMut.error.message} />}
             {evalError && <ErrorBox message={evalError} />}
+            {seriesError && <ErrorBox message={seriesError} />}
           </div>
+          {seriesAvailable && !isFinal(activeId) && !seriesDone && (
+            <p className="text-[11px] text-muted-foreground">
+              提示：续写按首卡同规格逐批产出（每批 5 集、服务端后台运行），token 成本与首卡相当——建议定稿后再生成全集。
+            </p>
+          )}
           {evalRunning && evalConceptId === activeId && <Generating text="判档质检中（后台运行，可离开本页）…" />}
+          {seriesRunning && seriesConceptId === activeId && (
+            <Generating text={`${seriesText}（全程约 1~3 小时；服务端后台产出，页面可关闭，随时回来查看）`} />
+          )}
+          {seriesError && (
+            <p className="text-xs text-muted-foreground">
+              续写已在服务端保留断点，重按按钮即可从断点继续，已产出的集不会重复。
+            </p>
+          )}
           {packEval && activePack && !legacy && <EvalReportView report={packEval} />}
 
           {!activePack ? (
@@ -135,6 +220,12 @@ export function Finalize({
             </div>
           ) : (
             <div className="space-y-4">
+              {activePack.episodes.length > cardEps && (
+                <p className="mono-label text-[10px] text-[hsl(var(--mint))]">
+                  全集剧本 · 已产出 {activePack.episodes.length}/{seriesTarget} 集
+                  {activePack.episodes.length >= seriesTarget ? " · 全集齐" : "（续写中）"}
+                </p>
+              )}
               {activePack.episodes.map((ep) => (
                 <div key={ep.epNo} className="space-y-2">
                   <EpisodeDoc script={ep} />
