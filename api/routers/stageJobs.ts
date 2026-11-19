@@ -18,6 +18,7 @@ interface StageJob {
   kind: StageKind;
   projectId: number;
   conceptId?: string;
+  providerId?: string;
   params?: { totalEpisodes?: number; episodeSeconds?: number; notes?: string };
   user: JobUser;
   status: "running" | "failed" | "done";
@@ -77,16 +78,17 @@ async function runStageJob(job: StageJob) {
   for (;;) {
     try {
       if (job.kind === "analysis") {
-        await caller.runAnalysis({ projectId: job.projectId });
+        await caller.runAnalysis({ projectId: job.projectId, providerId: job.providerId });
       } else if (job.kind === "concepts") {
         await caller.generateConcepts({
           projectId: job.projectId,
           totalEpisodes: job.params?.totalEpisodes ?? 60,
           episodeSeconds: job.params?.episodeSeconds ?? 75,
           notes: job.params?.notes,
+          providerId: job.providerId,
         });
       } else {
-        await caller.evaluatePack({ projectId: job.projectId, conceptId: job.conceptId! });
+        await caller.evaluatePack({ projectId: job.projectId, conceptId: job.conceptId!, providerId: job.providerId });
       }
       job.status = "done";
       job.updatedAt = Date.now();
@@ -110,8 +112,9 @@ function ensureStageJob(
   user: JobUser,
   kind: StageKind,
   projectId: number,
-  conceptId?: string,
-  params?: StageJob["params"],
+  conceptId: string | undefined,
+  params: StageJob["params"] | undefined,
+  providerId?: string,
 ): StageJob {
   const key = stageJobKey(kind, projectId, conceptId);
   const existing = stageJobs.get(key);
@@ -121,6 +124,7 @@ function ensureStageJob(
     kind,
     projectId,
     conceptId,
+    providerId,
     params,
     user,
     status: "running",
@@ -148,6 +152,7 @@ export const stageJobsRouter = createRouter({
         totalEpisodes: z.number().int().min(1).max(120).optional(),
         episodeSeconds: z.number().int().min(30).max(300).optional(),
         notes: z.string().max(2000).optional(),
+        providerId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -160,7 +165,7 @@ export const stageJobsRouter = createRouter({
           totalEpisodes: input.totalEpisodes,
           episodeSeconds: input.episodeSeconds,
           notes: input.notes,
-        }),
+        }, input.providerId),
       );
     }),
 

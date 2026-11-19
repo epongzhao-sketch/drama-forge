@@ -26,6 +26,7 @@ interface PackJob {
   stepIndex: number;
   totalSteps: number;
   stepLabel: string;
+  providerId?: string;
   attempt: number;
   error?: string;
   startedAt: number;
@@ -134,6 +135,7 @@ async function runPackJob(job: PackJob) {
           conceptId: job.conceptId,
           step: s.step,
           batch: s.batch,
+          providerId: job.providerId,
         });
         break;
       } catch (err) {
@@ -156,7 +158,7 @@ async function runPackJob(job: PackJob) {
 }
 
 /** 幂等提交：同包已有进行中任务则直接返回；失败/完成的任务重新提交会按落库断点续跑 */
-function ensurePackJob(user: JobUser, projectId: number, conceptId: string): PackJob {
+function ensurePackJob(user: JobUser, projectId: number, conceptId: string, providerId?: string): PackJob {
   const key = packJobKey(projectId, conceptId);
   const existing = packJobs.get(key);
   if (existing?.status === "running") return existing;
@@ -164,6 +166,7 @@ function ensurePackJob(user: JobUser, projectId: number, conceptId: string): Pac
     key,
     projectId,
     conceptId,
+    providerId,
     user,
     status: "running",
     stepIndex: 0,
@@ -185,7 +188,7 @@ function ensurePackJob(user: JobUser, projectId: number, conceptId: string): Pac
 export const packJobsRouter = createRouter({
   /** 提交剧本包异步产出任务：秒回，服务端后台逐步执行（每步落库），前端轮询 status。重复提交幂等；force=true 清掉旧包从头再来 */
   start: authedQuery
-    .input(z.object({ projectId: z.number(), conceptId: z.string(), force: z.boolean().optional() }))
+    .input(z.object({ projectId: z.number(), conceptId: z.string(), force: z.boolean().optional(), providerId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await ensureProject(ctx.user.id, input.projectId);
       const pool = await loadRemapPool(input.projectId);
@@ -200,7 +203,7 @@ export const packJobsRouter = createRouter({
           .where(and(eq(scriptPacks.projectId, input.projectId), eq(scriptPacks.conceptId, input.conceptId)));
         packJobs.delete(packJobKey(input.projectId, input.conceptId));
       }
-      return publicJob(ensurePackJob(ctx.user, input.projectId, input.conceptId));
+      return publicJob(ensurePackJob(ctx.user, input.projectId, input.conceptId, input.providerId));
     }),
 
   /** 轮询剧本包产出进度（秒回）。进程重启后无内存任务但包未完成的，自动从断点续跑（自愈） */

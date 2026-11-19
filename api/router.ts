@@ -4,6 +4,7 @@ import { pipelineRouter } from "./routers/pipeline";
 import { packJobsRouter } from "./routers/packJobs";
 import { stageJobsRouter } from "./routers/stageJobs";
 import { seriesJobsRouter } from "./routers/seriesJobs";
+import { aiRouter } from "./routers/ai";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
@@ -12,6 +13,7 @@ export const appRouter = createRouter({
   packJobs: packJobsRouter,
   stageJobs: stageJobsRouter,
   seriesJobs: seriesJobsRouter,
+  ai: aiRouter,
 });
 
 export type AppRouter = typeof appRouter;

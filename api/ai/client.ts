@@ -122,23 +122,6 @@ interface ErrorBody {
 
 // ---------- 配置与错误映射 ----------
 
-interface GatewayConfig {
-  baseUrl: string;
-  apiKey: string;
-}
-
-function config(): GatewayConfig {
-  const baseUrl = readEnv("KIMI_AGENTGW_BASE_URL");
-  const apiKey = readEnv("KIMI_AGENTGW_API_KEY");
-  if (!baseUrl || !apiKey) {
-    throw new AiMisconfigured(
-      "KIMI_AGENTGW_BASE_URL / KIMI_AGENTGW_API_KEY 未注入：站点可能尚未供给。" +
-        "先确认 .env 里有这两个变量；没有则让用户发布（或重新打开）一次站点后重试。",
-    );
-  }
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
-}
-
 /**
  * 把网关的 HTTP 状态与 error.type 映射成带语义的类型。
  *
@@ -252,15 +235,14 @@ export function isRetryableAiError(err: unknown): boolean {
 // ---------- 对外方法 ----------
 
 /**
- * 可用模型清单。**站点不要硬编码模型 id**：可用集合由该站点的 scope/权益决定，
- * 会不告而变。显式传一个过期 id 不会被网关拒绝（原样回显），因此硬编码是静默降级。
+ * 可用模型清单（指定服务商配置）。**不要硬编码模型 id**：显式传 defaultModel 的配置 > default_model_id > 第一个模型。
  */
-export async function listModels(): Promise<ModelList> {
-  const { baseUrl, apiKey } = config();
+export async function listModelsFor(cfg: { baseUrl: string; apiKey: string }): Promise<ModelList> {
+  const baseUrl = cfg.baseUrl.replace(/\/+$/, "");
   let res: Response;
   try {
     res = await fetch(`${baseUrl}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { Authorization: `Bearer ${cfg.apiKey}` },
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
@@ -306,4 +288,14 @@ export async function listModels(): Promise<ModelList> {
   const defaultModelId = body.default_model_id ?? models[0]?.id ?? "";
   if (!defaultModelId) throw new AiUnavailable("网关未下发可用模型");
   return { models, defaultModelId };
+}
+
+/** 兼容旧签名：默认服务商（KIMI_AGENTGW_*）的模型清单 */
+export async function listModels(): Promise<ModelList> {
+  const baseUrl = readEnv("KIMI_AGENTGW_BASE_URL");
+  const apiKey = readEnv("KIMI_AGENTGW_API_KEY");
+  if (!baseUrl || !apiKey) {
+    throw new AiMisconfigured("KIMI_AGENTGW_BASE_URL / KIMI_AGENTGW_API_KEY 未注入");
+  }
+  return listModelsFor({ baseUrl, apiKey });
 }

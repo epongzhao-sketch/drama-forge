@@ -1,6 +1,7 @@
 // 编审定稿阶段：审阅各入选方案的剧本包 → 判档质检 → 选定最终 1 个 → （定稿后）续写全集剧本
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAiProvider } from "@/hooks/useAiProvider";
 import type { RemapPool, ConceptScriptPack, EvalReport } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
@@ -27,6 +28,7 @@ export function Finalize({
   const finalMut = trpc.pipeline.finalizeConcept.useMutation({ onSuccess: onDone });
   // 判档质检改异步：提交秒回 + 轮询（根治平台代理掐断长请求）
   const evalStartMut = trpc.stageJobs.start.useMutation();
+  const { activeId: providerId } = useAiProvider();
   // 全集续写改异步：提交秒回 + 轮询；断点服务端托管，页面关闭不影响产出
   const seriesStartMut = trpc.seriesJobs.start.useMutation();
   const utils = trpc.useUtils();
@@ -45,7 +47,7 @@ export function Finalize({
     try {
       setEvalRunning(true);
       setEvalConceptId(conceptId);
-      await evalStartMut.mutateAsync({ projectId, kind: "evaluate", conceptId });
+      await evalStartMut.mutateAsync({ projectId, kind: "evaluate", conceptId, providerId });
       pollRef.current = setInterval(async () => {
         try {
           const st = await utils.stageJobs.status.fetch({ projectId, kind: "evaluate", conceptId });
@@ -78,7 +80,7 @@ export function Finalize({
     try {
       setSeriesRunning(true);
       setSeriesConceptId(conceptId);
-      await seriesStartMut.mutateAsync({ projectId, conceptId });
+      await seriesStartMut.mutateAsync({ projectId, conceptId, providerId });
       seriesPollRef.current = setInterval(async () => {
         try {
           const st = await utils.seriesJobs.status.fetch({ projectId, conceptId });

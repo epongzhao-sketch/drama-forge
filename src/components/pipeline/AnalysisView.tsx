@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAiProvider } from "@/hooks/useAiProvider";
 import type { AnalysisResult } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating, Led } from "@/components/chrome";
@@ -26,6 +27,7 @@ export function AnalysisView({
   onDone: () => void;
 }) {
   const startMut = trpc.stageJobs.start.useMutation();
+  const { activeId: providerId } = useAiProvider();
   const utils = trpc.useUtils();
   const [running, setRunning] = useState(false);
   const [jobError, setJobError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function AnalysisView({
     setJobError(null);
     try {
       setRunning(true);
-      await startMut.mutateAsync({ projectId, kind: "analysis" });
+      await startMut.mutateAsync({ projectId, kind: "analysis", providerId });
       pollRef.current = setInterval(async () => {
         try {
           const st = await utils.stageJobs.status.fetch({ projectId, kind: "analysis" });

@@ -1,6 +1,7 @@
 // 换皮方案阶段：AI 一次产出 10 个方案 → 人工粗选 3~5 个进入剧本产出
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAiProvider } from "@/hooks/useAiProvider";
 import type { AnalysisResult, RemapPool } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ export function RemapConcepts({
 
   // 异步生成：提交秒回 + 轮询进度（根治平台代理掐断长请求）
   const genStartMut = trpc.stageJobs.start.useMutation();
+  const { activeId: providerId } = useAiProvider();
   const utils = trpc.useUtils();
   const [genRunning, setGenRunning] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -45,6 +47,7 @@ export function RemapConcepts({
         totalEpisodes,
         episodeSeconds,
         notes: notes || undefined,
+        providerId,
       });
       pollRef.current = setInterval(async () => {
         try {

@@ -532,7 +532,7 @@ export const pipelineRouter = createRouter({
 
   /** AI 拆解爆款样本（重点分析红标段为何能爆：核心期待 × 情绪卖点） */
   runAnalysis: authedQuery
-    .input(z.object({ projectId: z.number() }))
+    .input(z.object({ projectId: z.number(), providerId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await ensureProject(ctx.user.id, input.projectId);
       const { sample } = await loadContext(input.projectId);
@@ -542,7 +542,7 @@ export const pipelineRouter = createRouter({
       const marked = injectRedMarkers(sample.content.slice(0, MAX_SAMPLE_CHARS), segs);
       try {
         const { object } = await generateObjectStreamed({
-          model: await getModel(),
+          model: await getModel(input.providerId),
           maxRetries: 3,
           schema: analysisSchema,
           prompt: [
@@ -592,6 +592,7 @@ export const pipelineRouter = createRouter({
     .input(
       z.object({
         projectId: z.number(),
+        providerId: z.string().optional(),
         totalEpisodes: z.number().int().min(1).max(120),
         episodeSeconds: z.number().int().min(30).max(300),
         notes: z.string().max(2000).optional(),
@@ -606,7 +607,7 @@ export const pipelineRouter = createRouter({
       const a = analysis.result as AnalysisResult;
       try {
         const { object } = await generateObjectStreamed({
-          model: await getModel(),
+          model: await getModel(input.providerId),
           maxRetries: 3,
           schema: z.object({ concepts: z.array(conceptSchema).length(10) }),
           prompt: [
@@ -690,6 +691,7 @@ export const pipelineRouter = createRouter({
         conceptId: z.string(),
         step: z.enum(["foundation", "episodes", "promo", "series"]),
         batch: z.number().int().min(0).default(0),
+        providerId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -736,7 +738,7 @@ export const pipelineRouter = createRouter({
         // 第 1 步（独立请求）：方向卡 + 人物小传 + 全剧集纲；落库 status=generating，前端再逐批调 episodes/promo
         if (input.step === "foundation") {
           const foundation = await generateObjectStreamed({
-          model: await getModel(),
+          model: await getModel(input.providerId),
           maxRetries: 3,
           schema: packFoundationSchema,
           prompt: [
@@ -880,7 +882,7 @@ export const pipelineRouter = createRouter({
                   ].join("\n")
                 : "";
             const { object: chunk } = await generateObjectStreamed({
-              model: await getModel(),
+              model: await getModel(input.providerId),
               maxRetries: 3,
               schema: episodeChunkSchema,
               prompt: [
@@ -1008,7 +1010,7 @@ export const pipelineRouter = createRouter({
                 ].join("\n")
               : "";
             const { object: chunk } = await generateObjectStreamed({
-              model: await getModel(),
+              model: await getModel(input.providerId),
               maxRetries: 3,
               schema: episodeChunkSchema,
               prompt: [
@@ -1092,7 +1094,7 @@ export const pipelineRouter = createRouter({
         // 第 3 步（独立请求）：2 段不连贯投流素材（优先从首卡之后的付费墙/大反转节点挑）
         const laterBeats = beatsFor(cardEpisodes + 1, Number.MAX_SAFE_INTEGER);
         const { object: promoObj } = await generateObjectStreamed({
-          model: await getModel(),
+          model: await getModel(input.providerId),
           maxRetries: 3,
           schema: promoChunkSchema,
           prompt: [
@@ -1160,7 +1162,7 @@ export const pipelineRouter = createRouter({
 
   /** 判档质检：某个方案的剧本包（建议性报告） */
   evaluatePack: authedQuery
-    .input(z.object({ projectId: z.number(), conceptId: z.string() }))
+    .input(z.object({ projectId: z.number(), conceptId: z.string(), providerId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await ensureProject(ctx.user.id, input.projectId);
       const db = getDb();
@@ -1178,7 +1180,7 @@ export const pipelineRouter = createRouter({
       const concept = pool?.concepts.find((c) => c.id === input.conceptId);
       try {
         const { object } = await generateObjectStreamed({
-          model: await getModel(),
+          model: await getModel(input.providerId),
           maxRetries: 3,
           schema: evalReportSchema,
           prompt: [

@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useAiProvider } from "@/hooks/useAiProvider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -6,8 +7,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Clapperboard } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LogOut, Clapperboard, Cpu } from "lucide-react";
 import { Link } from "react-router";
+
+/** 顶栏 AI 服务商切换器：选择保存在本地，各 AI 任务按选择路由（密钥只在服务端） */
+export function AiProviderSelect() {
+  const { providers, activeId, setPicked } = useAiProvider();
+  if (providers.length < 2) return null; // 只有一个服务商时不显示，避免无意义的干扰
+  return (
+    <div className="flex items-center gap-1.5">
+      <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+      <Select value={activeId} onValueChange={setPicked}>
+        <SelectTrigger className="h-8 w-40 border-border bg-secondary/60 text-xs">
+          <SelectValue placeholder="选择模型服务商" />
+        </SelectTrigger>
+        <SelectContent>
+          {providers.map((p) => (
+            <SelectItem key={p.id} value={p.id} className="text-xs">
+              {p.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 export function Led({ tone, pulse }: { tone?: "amber" | "mint" | "red"; pulse?: boolean }) {
   const cls = tone === "amber" ? "led-amber" : tone === "mint" ? "led-mint" : tone === "red" ? "led-red" : "";
@@ -40,6 +65,7 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
           <span className="mono-label text-[10px]">Pipeline&nbsp;Online</span>
         </div>
         <div className="flex-1" />
+        <AiProviderSelect />
         {right}
         {user && (
           <DropdownMenu>

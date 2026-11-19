@@ -1,6 +1,7 @@
 // 剧本产出阶段：为每个入选方案生成「方向卡 + 人物小传 + 首卡 1~10 集全量连贯剧本（分批产出）+ 2 段不连贯投流素材」
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAiProvider } from "@/hooks/useAiProvider";
 import type { RemapPool, ConceptScriptPack, PromoClip, DirectionCard, CharacterBio } from "@contracts/pipeline";
 import { Button } from "@/components/ui/button";
 import { ErrorBox, Generating } from "@/components/chrome";
@@ -334,6 +335,7 @@ export function ScriptPacks({
 }) {
   const [activeId, setActiveId] = useState<string | null>(pool?.selectedIds[0] ?? null);
   const startMut = trpc.packJobs.start.useMutation();
+  const { activeId: providerId } = useAiProvider();
   const utils = trpc.useUtils();
   const [progress, setProgress] = useState<{ conceptId: string; text: string } | null>(null);
   const [jobError, setJobError] = useState<{ conceptId: string; message: string } | null>(null);
@@ -357,7 +359,7 @@ export function ScriptPacks({
     setJobError(null);
     try {
       setProgress({ conceptId, text: "提交产出任务…" });
-      await startMut.mutateAsync({ projectId, conceptId, force });
+      await startMut.mutateAsync({ projectId, conceptId, force, providerId });
       for (;;) {
         await new Promise((r) => setTimeout(r, 8000));
         const st = await utils.packJobs.status.fetch({ projectId, conceptId });

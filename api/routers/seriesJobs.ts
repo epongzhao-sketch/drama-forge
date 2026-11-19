@@ -22,6 +22,7 @@ interface SeriesJob {
   key: string;
   projectId: number;
   conceptId: string;
+  providerId?: string;
   user: JobUser;
   status: "running" | "failed" | "done";
   stepIndex: number;
@@ -141,6 +142,7 @@ async function runSeriesJob(job: SeriesJob) {
           conceptId: job.conceptId,
           step: "series",
           batch: s.batch,
+          providerId: job.providerId,
         });
         break;
       } catch (err) {
@@ -163,7 +165,7 @@ async function runSeriesJob(job: SeriesJob) {
 }
 
 /** 幂等提交：同方案已有进行中任务则直接返回；失败/部分完成的任务重新提交会按落库断点续跑 */
-function ensureSeriesJob(user: JobUser, projectId: number, conceptId: string): SeriesJob {
+function ensureSeriesJob(user: JobUser, projectId: number, conceptId: string, providerId?: string): SeriesJob {
   const key = seriesJobKey(projectId, conceptId);
   const existing = seriesJobs.get(key);
   if (existing?.status === "running") return existing;
@@ -171,6 +173,7 @@ function ensureSeriesJob(user: JobUser, projectId: number, conceptId: string): S
     key,
     projectId,
     conceptId,
+    providerId,
     user,
     status: "running",
     stepIndex: 0,
@@ -192,7 +195,7 @@ function ensureSeriesJob(user: JobUser, projectId: number, conceptId: string): S
 export const seriesJobsRouter = createRouter({
   /** 提交全集续写任务：秒回，服务端后台逐批执行（每批落库），前端轮询 status。重复提交幂等 */
   start: authedQuery
-    .input(z.object({ projectId: z.number(), conceptId: z.string() }))
+    .input(z.object({ projectId: z.number(), conceptId: z.string(), providerId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await ensureProject(ctx.user.id, input.projectId);
       const pool = await loadRemapPool(input.projectId);
@@ -216,7 +219,7 @@ export const seriesJobsRouter = createRouter({
       if (pack.status !== "done") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "首卡尚未产出完成，请先完成剧本包产出再续写全集" });
       }
-      const job = ensureSeriesJob(ctx.user, input.projectId, input.conceptId);
+      const job = ensureSeriesJob(ctx.user, input.projectId, input.conceptId, input.providerId);
       return publicJob(job, pack, pool.totalEpisodes);
     }),
 
