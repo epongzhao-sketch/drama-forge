@@ -18,4 +18,4 @@ export const appRouter = createRouter({
 
 export type AppRouter = typeof appRouter;
 
-// 部署标记: v38 全集续写（编审定稿后继续生成全剧剧本）
+// 部署标记: v39-multi-provider-1240（多服务商 + 全集续写；替代丢失的 f346392/1223）

@@ -6,7 +6,7 @@ import './index.css'
 import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
 
-console.info("[drama-forge] build v38-series-full-1120");
+console.info("[drama-forge] build v39-multi-provider-1240");
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
